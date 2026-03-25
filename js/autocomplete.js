@@ -97,7 +97,115 @@ function initAutocomplete(inputEl, options) {
       q.length >= 2;
   }
 
-  // ── Photon API（主力） ─────────────────────────────────────
+  // ── Google Places API (New)（主力，需 API Key） ───────────
+  // 使用 REST API，無需載入 Google Maps JS SDK
+  // Session Token 機制：多次按鍵打包成 1 次計費
+  // API Key 設定在 index.html 的 GOOGLE_PLACES_API_KEY 常數
+
+  let _googleSessionToken = null;
+
+  function getGoogleSessionToken() {
+    if (!_googleSessionToken) {
+      _googleSessionToken = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    return _googleSessionToken;
+  }
+
+  function resetGoogleSessionToken() {
+    _googleSessionToken = null;
+  }
+
+  // 取得 Google API Key（從全域常數）
+  function getGoogleApiKey() {
+    return (typeof GOOGLE_PLACES_API_KEY !== 'undefined' && GOOGLE_PLACES_API_KEY)
+      ? GOOGLE_PLACES_API_KEY
+      : null;
+  }
+
+  async function fetchGooglePlaces(query, signal) {
+    const apiKey = getGoogleApiKey();
+    if (!apiKey) return [];
+
+    const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+      },
+      body: JSON.stringify({
+        input: query,
+        sessionToken: getGoogleSessionToken(),
+        includedRegionCodes: ['TW'],
+        languageCode: 'zh-TW',
+        locationBias: {
+          circle: {
+            center: { latitude: BIAS_LAT, longitude: BIAS_LON },
+            radius: 80000,
+          },
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      // 429 = quota 超過，靜默降級
+      if (res.status === 429 || res.status === 403) return [];
+      throw new Error(`Google Places ${res.status}`);
+    }
+
+    const data = await res.json();
+    const suggestions = data.suggestions || [];
+
+    return suggestions
+      .filter(s => s.placePrediction)
+      .slice(0, opts.maxResults)
+      .map(s => {
+        const pp = s.placePrediction;
+        return {
+          address: pp.text?.text || pp.structuredFormat?.mainText?.text || query,
+          lat: null,   // 座標需要 Place Details 呼叫
+          lng: null,
+          precision: 'exact',
+          source: 'google',
+          type: 'place',
+          _placeId: pp.placeId,
+          _mainText: pp.structuredFormat?.mainText?.text || '',
+          _secondaryText: pp.structuredFormat?.secondaryText?.text || '',
+        };
+      });
+  }
+
+  async function fetchGooglePlaceDetails(placeId) {
+    const apiKey = getGoogleApiKey();
+    if (!apiKey) return null;
+
+    const res = await fetch(
+      `https://places.googleapis.com/v1/places/${placeId}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'location,displayName,formattedAddress',
+        },
+      }
+    );
+
+    if (!res.ok) return null;
+    const place = await res.json();
+
+    // 選取完成後重置 session token（下次搜尋為新 session）
+    resetGoogleSessionToken();
+
+    return {
+      lat: place.location?.latitude ?? null,
+      lng: place.location?.longitude ?? null,
+      address: place.formattedAddress || place.displayName?.text || '',
+    };
+  }
+
+  // ── Photon API（主力，無 Google Key 時） ──────────────────
   // https://photon.komoot.io/api/
   // 回傳 GeoJSON，適合 autocomplete（部分輸入即可）
 
@@ -297,7 +405,9 @@ out center 6;
     return r || null;
   }
 
-  // ── 主搜尋邏輯（四層降級） ────────────────────────────────
+  // ── 主搜尋邏輯（五層降級） ────────────────────────────────
+  // 有 GOOGLE_PLACES_API_KEY → Google 優先
+  // 沒有 Key → 直接跳到 Photon
 
   async function fetchResults(rawQuery) {
     if (currentAbortController) currentAbortController.abort();
@@ -311,7 +421,18 @@ out center 6;
       const isPlace = looksLikePlaceName(query, parsed);
       let results = [];
 
-      // ── 第一層：Photon（地址 + 場所都試） ──────────────────
+      // ── 第一層：Google Places（有 Key 才啟用） ──────────────
+      if (getGoogleApiKey()) {
+        try {
+          results = await fetchGooglePlaces(query, signal);
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          // 其他 Google 錯誤→靜默降級
+        }
+        if (results.length > 0) return results;
+      }
+
+      // ── 第二層：Photon（地址 + 場所都試） ──────────────────
       try {
         results = await fetchPhoton(query, signal);
       } catch (e) {
@@ -320,7 +441,7 @@ out center 6;
 
       if (results.length > 0) return results;
 
-      // ── 第二層：Nominatim free-text ────────────────────────
+      // ── 第三層：Nominatim free-text ────────────────────────
       try {
         results = await fetchNominatimFree(query, signal);
       } catch (e) {
@@ -329,7 +450,7 @@ out center 6;
 
       if (results.length > 0) return results;
 
-      // ── 第三層：Nominatim structured（去門牌號，僅地址型） ─
+      // ── 第四層：Nominatim structured（去門牌號，僅地址型） ─
       if (!isPlace && parsed.road && (parsed.city || parsed.district)) {
         try {
           results = await fetchNominatimStructured(parsed, signal);
@@ -339,8 +460,7 @@ out center 6;
         if (results.length > 0) return results;
       }
 
-      // ── 第四層：Overpass 場所名稱搜尋 ──────────────────────
-      // 場所名稱才試 Overpass（避免地址型查詢污染）
+      // ── 第五層：Overpass 場所名稱搜尋 ──────────────────────
       if (isPlace || results.length === 0) {
         try {
           results = await fetchOverpass(query, signal);
@@ -413,12 +533,17 @@ out center 6;
 
   // 來源 icon
   const SOURCE_ICON = {
+    google:    '🔵',
     photon:    '📍',
     nominatim: '🗺',
     overpass:  '🔍',
   };
 
   function parseSubText(item) {
+    // Google 結果有專用副文字（城市、行政區）
+    if (item.source === 'google' && item._secondaryText) {
+      return item._secondaryText;
+    }
     const addr = item.address || '';
     // 台灣慣用格式開頭
     const m = addr.match(/^(.{2,4}[市縣])(.{2,4}[區鎮鄉市])?/);
@@ -475,7 +600,11 @@ out center 6;
 
       const main = document.createElement('div');
       main.className = 'ac-item-main';
-      main.innerHTML = highlightText(item.address, query) + badge;
+      // Google 結果優先顯示主文字（更簡潔），其他顯示完整地址
+      const displayText = (item.source === 'google' && item._mainText)
+        ? item._mainText
+        : item.address;
+      main.innerHTML = highlightText(displayText, query) + badge;
 
       const sub = document.createElement('div');
       sub.className = 'ac-item-sub';
@@ -495,11 +624,36 @@ out center 6;
 
   // ── 選中邏輯 ──────────────────────────────────────────────
 
-  function selectItem(idx) {
+  async function selectItem(idx) {
     const item = currentItems[idx];
     if (!item) return;
     inputEl.value = item.address;
     destroyList();
+
+    // Google 結果需要 Place Details 二次呼叫取得座標
+    if (item.source === 'google' && item._placeId) {
+      // 顯示「取得位置中…」過渡狀態
+      inputEl.disabled = true;
+      try {
+        const details = await fetchGooglePlaceDetails(item._placeId);
+        if (details && details.lat != null && typeof opts.onSelect === 'function') {
+          opts.onSelect({
+            address: details.address || item.address,
+            lat: details.lat,
+            lng: details.lng,
+            precision: 'exact',
+            source: 'google',
+          });
+          return;
+        }
+      } catch {
+        // Place Details 失敗→當作找不到
+      } finally {
+        inputEl.disabled = false;
+      }
+    }
+
+    // 一般結果（Photon / Nominatim / Overpass）直接回呼
     if (typeof opts.onSelect === 'function') {
       opts.onSelect({
         address: item.address,
