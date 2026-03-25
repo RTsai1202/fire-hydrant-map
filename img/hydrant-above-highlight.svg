@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 56">
+  <defs>
+    <linearGradient id="bodyGradH" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#c0392b"/>
+      <stop offset="35%" stop-color="#e74c3c"/>
+      <stop offset="65%" stop-color="#e74c3c"/>
+      <stop offset="100%" stop-color="#c0392b"/>
+    </linearGradient>
+    <linearGradient id="capGradH" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e74c3c"/>
+      <stop offset="100%" stop-color="#c0392b"/>
+    </linearGradient>
+    <linearGradient id="baseGradH" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c0392b"/>
+      <stop offset="100%" stop-color="#922b21"/>
+    </linearGradient>
+    <!-- 橘色光暈 filter -->
+    <filter id="glowOrange" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feFlood flood-color="#f39c12" flood-opacity="0.85" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- 整體圖形套用橘色光暈 filter -->
+  <g filter="url(#glowOrange)">
+    <!-- ===== 底座 ===== -->
+    <path d="M8,49 L32,49 L29,41 L11,41 Z"
+          fill="url(#baseGradH)"
+          stroke="#f39c12" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="6" y="49" width="28" height="5" rx="2"
+          fill="url(#baseGradH)"
+          stroke="#f39c12" stroke-width="3"/>
+
+    <!-- ===== 桶身 ===== -->
+    <path d="M11,17 L29,17 L29,41 L11,41 Z"
+          fill="url(#bodyGradH)"
+          stroke="#f39c12" stroke-width="3" stroke-linejoin="round"/>
+
+    <!-- 出水口左側 -->
+    <circle cx="8" cy="29" r="3.5"
+            fill="#c0392b" stroke="#f39c12" stroke-width="3"/>
+    <circle cx="8" cy="29" r="1.8" fill="#922b21"/>
+
+    <!-- 出水口右側 -->
+    <circle cx="32" cy="29" r="3.5"
+            fill="#c0392b" stroke="#f39c12" stroke-width="3"/>
+    <circle cx="32" cy="29" r="1.8" fill="#922b21"/>
+
+    <!-- ===== 頸部 ===== -->
+    <rect x="14" y="10" width="12" height="7" rx="1"
+          fill="#c0392b"
+          stroke="#f39c12" stroke-width="3"/>
+
+    <!-- ===== 頂蓋 ===== -->
+    <ellipse cx="20" cy="10" rx="11" ry="5"
+             fill="url(#capGradH)"
+             stroke="#f39c12" stroke-width="3"/>
+    <circle cx="20" cy="7" r="3"
+            fill="#e74c3c" stroke="#f39c12" stroke-width="1"/>
+  </g>
+
+  <!-- 清晰輪廓白色描邊（蓋在光暈之上） -->
+  <path d="M8,49 L32,49 L29,41 L11,41 Z"
+        fill="url(#baseGradH)"
+        stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+  <rect x="6" y="49" width="28" height="5" rx="2"
+        fill="url(#baseGradH)"
+        stroke="white" stroke-width="1.5"/>
+  <path d="M11,17 L29,17 L29,41 L11,41 Z"
+        fill="url(#bodyGradH)"
+        stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+  <circle cx="8" cy="29" r="3.5"
+          fill="#c0392b" stroke="white" stroke-width="1.5"/>
+  <circle cx="8" cy="29" r="1.8" fill="#922b21"/>
+  <circle cx="32" cy="29" r="3.5"
+          fill="#c0392b" stroke="white" stroke-width="1.5"/>
+  <circle cx="32" cy="29" r="1.8" fill="#922b21"/>
+  <rect x="14" y="10" width="12" height="7" rx="1"
+        fill="#c0392b" stroke="white" stroke-width="1.5"/>
+  <ellipse cx="20" cy="10" rx="11" ry="5"
+           fill="url(#capGradH)" stroke="white" stroke-width="1.5"/>
+  <circle cx="20" cy="7" r="3"
+          fill="#e74c3c" stroke="white" stroke-width="1"/>
+
+  <!-- 高光 -->
+  <rect x="13" y="19" width="4" height="18" rx="2"
+        fill="rgba(255,255,255,0.18)"/>
+  <ellipse cx="17" cy="9" rx="4" ry="2"
+           fill="rgba(255,255,255,0.25)"/>
+</svg>

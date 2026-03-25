@@ -3,254 +3,492 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>消防栓位置地圖 — 十九甲分隊</title>
+  <title>消防栓位置地圖 — 車籠埔分隊</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/autocomplete.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", sans-serif;
       height: 100dvh;
+      overflow: hidden;
+      background: #1a1a2e;
+    }
+
+    /* ── 地圖全螢幕 ──────────────────────────────── */
+    #map {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    /* ── 搜尋卡片（左上角浮動） ─────────────────── */
+    #search-card {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 500;
+      width: 360px;
+      background: rgba(255, 255, 255, 0.97);
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      overflow: visible;
+    }
+
+    #search-card-header {
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 14px 6px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    #search-card-header .card-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    #search-card-header .card-label {
+      font-size: 12px;
+      color: #666;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+
+    #search-card-body {
+      padding: 8px 10px 10px;
+    }
+
+    #search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #search-input {
+      flex: 1;
+      padding: 9px 14px;
+      border: 1.5px solid #e8e8e8;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      background: #f9f9f9;
+      color: #222;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    #search-input:focus {
+      border-color: #e74c3c;
+      background: #fff;
+    }
+
+    #search-input::placeholder { color: #bbb; }
+
+    #search-btn {
+      background: #e74c3c;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    #search-btn:hover { background: #c0392b; }
+
+    #autocomplete-list {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+      z-index: 600;
       overflow: hidden;
     }
 
-    /* ── 頂部搜尋列 ─────────────────────────── */
-    #header {
-      background: #c0392b;
-      color: #fff;
-      padding: 10px 12px;
+    /* ── 載入遮罩 ────────────────────────────────── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 20, 0.75);
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.35);
-      z-index: 500;
-      flex-shrink: 0;
-    }
-    #header-title {
-      font-size: 15px;
-      font-weight: 700;
-      white-space: nowrap;
-      letter-spacing: .5px;
-    }
-    #search-wrap {
-      flex: 1;
-      position: relative;
-    }
-    #search-input {
-      width: 100%;
-      padding: 8px 40px 8px 14px;
-      border: none;
-      border-radius: 20px;
-      font-size: 14px;
-      outline: none;
-      background: rgba(255,255,255,.95);
-    }
-    #search-input::placeholder { color: #aaa; }
-    #search-btn {
-      position: absolute;
-      right: 4px; top: 50%;
-      transform: translateY(-50%);
-      background: #c0392b;
+      justify-content: center;
+      z-index: 9999;
       color: #fff;
-      border: none;
-      border-radius: 50%;
-      width: 30px; height: 30px;
-      cursor: pointer;
-      font-size: 14px;
-      display: flex; align-items: center; justify-content: center;
-      transition: background .2s;
+      gap: 16px;
+      backdrop-filter: blur(4px);
     }
-    #search-btn:hover { background: #96281b; }
 
-    /* ── 地圖 ───────────────────────────────── */
-    #map { flex: 1; }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: #e74c3c;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
 
-    /* ── 狀態提示 ───────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #loading-msg {
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.85);
+      letter-spacing: 0.5px;
+    }
+
+    /* ── 狀態提示 ────────────────────────────────── */
     #status {
       position: fixed;
-      top: 64px; left: 50%;
+      top: 16px;
+      left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,.72);
+      background: rgba(10, 10, 20, 0.82);
       color: #fff;
-      padding: 6px 16px;
+      padding: 7px 18px;
       border-radius: 20px;
       font-size: 13px;
       pointer-events: none;
       z-index: 900;
       white-space: nowrap;
       display: none;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    /* ── 載入遮罩 ───────────────────────────── */
-    #loading {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,.55);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      z-index: 9999; color: #fff; gap: 14px;
-    }
-    .spinner {
-      width: 42px; height: 42px;
-      border: 4px solid rgba(255,255,255,.3);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .75s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #loading-msg { font-size: 15px; }
-
-    /* ── 附近消防栓清單 ─────────────────────── */
+    /* ── 附近消防栓面板（右上角浮動） ───────────── */
     #nearby-panel {
       position: fixed;
-      top: 62px; right: 10px;
-      width: 240px;
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 3px 16px rgba(0,0,0,.22);
+      top: 12px;
+      right: 12px;
+      width: 260px;
+      background: rgba(255, 255, 255, 0.97);
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
       z-index: 700;
       display: none;
-      max-height: calc(100dvh - 140px);
+      max-height: calc(100dvh - 100px);
       overflow: hidden;
-      display: none;
       flex-direction: column;
+      backdrop-filter: blur(12px);
     }
+
     #nearby-panel.open { display: flex; }
+
     #nearby-header {
-      padding: 10px 12px 8px;
-      border-bottom: 1px solid #f0f0f0;
-      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
     }
-    #nearby-header h3 { font-size: 13px; color: #c0392b; }
+
+    #nearby-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #c0392b;
+      letter-spacing: 0.3px;
+    }
+
     .panel-close {
-      background: none; border: none;
-      color: #999; cursor: pointer; font-size: 18px; line-height: 1;
-      padding: 0 2px;
-    }
-    .panel-close:hover { color: #333; }
-    #nearby-list { overflow-y: auto; }
-    .nearby-item {
-      padding: 9px 12px;
-      border-bottom: 1px solid #f5f5f5;
+      background: rgba(0, 0, 0, 0.06);
+      border: none;
+      color: #777;
       cursor: pointer;
-      transition: background .15s;
+      font-size: 13px;
+      line-height: 1;
+      padding: 4px 7px;
+      border-radius: 50%;
+      transition: background 0.15s, color 0.15s;
     }
-    .nearby-item:hover { background: #fff5f5; }
-    .nearby-name { font-size: 13px; font-weight: 600; color: #222; }
-    .nearby-meta { font-size: 11px; color: #888; margin-top: 2px; }
+
+    .panel-close:hover {
+      background: rgba(231, 76, 60, 0.12);
+      color: #c0392b;
+    }
+
+    #nearby-list {
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    #nearby-list::-webkit-scrollbar { width: 4px; }
+    #nearby-list::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+
+    .nearby-item {
+      padding: 10px 14px 10px 18px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+
+    .nearby-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      border-radius: 0 2px 2px 0;
+      background: #f39c12;
+    }
+
+    .nearby-item.dist-near::before { background: #27ae60; }
+    .nearby-item.dist-mid::before  { background: #f39c12; }
+    .nearby-item.dist-far::before  { background: #e67e22; }
+
+    .nearby-item:hover { background: rgba(231, 76, 60, 0.04); }
+
+    .nearby-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #222;
+    }
+
+    .nearby-meta {
+      font-size: 11px;
+      color: #999;
+      margin-top: 3px;
+    }
+
     .nearby-nav {
       display: inline-block;
-      margin-top: 4px;
+      margin-top: 5px;
       font-size: 11px;
       color: #4285f4;
       text-decoration: none;
+      font-weight: 500;
     }
 
-    /* ── 消防栓詳細資訊面板（底部抽屜） ──── */
+    .nearby-nav:hover { text-decoration: underline; }
+
+    /* ── 消防栓詳細資訊（底部抽屜） ─────────────── */
     #info-panel {
       position: fixed;
-      bottom: 0; left: 0; right: 0;
-      background: #fff;
-      border-radius: 16px 16px 0 0;
-      box-shadow: 0 -4px 24px rgba(0,0,0,.2);
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(16px);
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.22);
       z-index: 800;
       max-height: 65dvh;
       overflow-y: auto;
       transform: translateY(100%);
-      transition: transform .3s cubic-bezier(.4,0,.2,1);
-      padding: 16px 16px 24px;
+      transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+      padding: 0 0 28px;
     }
+
     #info-panel.open { transform: translateY(0); }
+
+    #info-panel::-webkit-scrollbar { width: 4px; }
+    #info-panel::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }
+
     #info-drag {
-      width: 40px; height: 4px;
-      background: #ddd; border-radius: 2px;
-      margin: 0 auto 14px;
+      width: 36px;
+      height: 4px;
+      background: #ddd;
+      border-radius: 2px;
+      margin: 12px auto 4px;
+      flex-shrink: 0;
     }
+
     #info-top {
-      display: flex; align-items: flex-start;
+      display: flex;
+      align-items: flex-start;
       justify-content: space-between;
-      margin-bottom: 10px;
+      padding: 10px 16px 8px;
+      margin-bottom: 2px;
     }
-    #info-title { font-size: 17px; font-weight: 700; color: #c0392b; }
+
+    #info-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a1a2e;
+      border-left: 4px solid #e74c3c;
+      padding-left: 10px;
+    }
+
+    #info-body {
+      padding: 0 16px;
+    }
+
     #info-body .row {
       display: flex;
-      padding: 7px 0;
-      border-bottom: 1px solid #f2f2f2;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
       font-size: 13px;
     }
+
     #info-body .row:last-child { border-bottom: none; }
-    #info-body .lbl { color: #888; width: 90px; flex-shrink: 0; }
-    #info-body .val { color: #222; font-weight: 500; }
-    #info-nav {
-      display: flex; gap: 8px; margin-top: 14px;
+
+    #info-body .lbl {
+      color: #aaa;
+      width: 90px;
+      flex-shrink: 0;
+      font-size: 12px;
     }
+
+    #info-body .val {
+      color: #333;
+      font-weight: 500;
+    }
+
+    #info-nav {
+      display: flex;
+      gap: 8px;
+      margin: 14px 16px 0;
+    }
+
     .nav-btn {
       flex: 1;
-      padding: 10px;
-      border-radius: 8px;
+      padding: 11px 10px;
+      border-radius: 24px;
       text-align: center;
       font-size: 13px;
       font-weight: 600;
       text-decoration: none;
-      border: none; cursor: pointer;
-    }
-    .nav-btn-google {
-      background: #4285f4; color: #fff;
-    }
-    .nav-btn-apple {
-      background: #f5f5f5; color: #333;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
     }
 
-    /* ── 右下控制按鈕 ───────────────────────── */
+    .nav-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .nav-btn:active { transform: translateY(0); }
+
+    .nav-btn-google {
+      background: #4285f4;
+      color: #fff;
+    }
+
+    .nav-btn-apple {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    /* ── 右下控制按鈕 ────────────────────────────── */
     #controls {
       position: fixed;
-      right: 10px; bottom: 100px;
-      display: flex; flex-direction: column;
-      gap: 8px; z-index: 700;
+      right: 14px;
+      bottom: 110px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 700;
     }
-    .ctrl-btn {
-      background: #fff;
-      border: none;
-      border-radius: 10px;
-      width: 42px; height: 42px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.18);
-      cursor: pointer;
-      font-size: 19px;
-      display: flex; align-items: center; justify-content: center;
-      transition: background .2s, color .2s;
-    }
-    .ctrl-btn:hover { background: #f5f5f5; }
-    .ctrl-btn.active { background: #c0392b; color: #fff; }
 
-    /* ── 圖例 ───────────────────────────────── */
+    .ctrl-btn {
+      background: rgba(10, 10, 20, 0.62);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+      cursor: pointer;
+      font-size: 18px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.15s;
+      backdrop-filter: blur(8px);
+    }
+
+    .ctrl-btn:hover {
+      background: rgba(30, 30, 50, 0.82);
+      transform: scale(1.06);
+    }
+
+    .ctrl-btn.active {
+      background: #e74c3c;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* ── 圖例（左下角水平膠囊） ─────────────────── */
     #legend {
       position: fixed;
-      bottom: 20px; left: 10px;
-      background: rgba(255,255,255,.92);
-      backdrop-filter: blur(6px);
-      border-radius: 8px;
-      padding: 8px 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      bottom: 20px;
+      left: 12px;
+      background: rgba(10, 10, 20, 0.68);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 8px 14px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
       z-index: 700;
       font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .leg { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
-    .leg:last-child { margin-bottom: 0; }
+
+    .leg {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: rgba(255, 255, 255, 0.85);
+      white-space: nowrap;
+    }
+
     .dot {
-      width: 12px; height: 12px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
-      border: 2px solid rgba(255,255,255,.8);
+      border: 1.5px solid rgba(255, 255, 255, 0.5);
       flex-shrink: 0;
     }
 
-    /* ── 同步時間角標 ───────────────────────── */
+    /* ── 同步時間角標 ────────────────────────────── */
     #sync-info {
       position: fixed;
-      bottom: 6px; right: 10px;
-      font-size: 10px; color: #aaa;
+      bottom: 6px;
+      right: 10px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.35);
       z-index: 700;
       pointer-events: none;
+    }
+
+    /* ── 響應式（手機） ──────────────────────────── */
+    @media (max-width: 768px) {
+      #search-card {
+        width: calc(100vw - 24px);
+      }
+
+      #nearby-panel {
+        top: auto;
+        right: 0;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        border-radius: 16px 16px 0 0;
+        max-height: 50dvh;
+      }
+
+      #controls {
+        right: 12px;
+        bottom: 90px;
+      }
+
+      #legend {
+        gap: 10px;
+        padding: 7px 12px;
+        font-size: 11px;
+      }
     }
   </style>
 </head>
@@ -262,22 +500,28 @@
   <div id="loading-msg">載入消防栓資料中…</div>
 </div>
 
-<!-- 頂部搜尋列 -->
-<div id="header">
-  <div id="header-title">🔴 消防栓地圖</div>
-  <div id="search-wrap">
-    <input id="search-input" type="text" placeholder="輸入地址，查詢附近消防栓…" autocomplete="off" />
-    <button id="search-btn" onclick="doSearch()" title="搜尋">🔍</button>
-  </div>
-</div>
-
 <!-- 地圖 -->
 <div id="map"></div>
+
+<!-- 搜尋卡片（左上角浮動） -->
+<div id="search-card">
+  <div id="search-card-header">
+    <span class="card-icon">🚒</span>
+    <span class="card-label">車籠埔分隊 消防栓地圖</span>
+  </div>
+  <div id="search-card-body">
+    <div id="search-wrap">
+      <input id="search-input" type="text" placeholder="輸入地址，查詢附近消防栓…" autocomplete="off" />
+      <button id="search-btn" onclick="doSearch()" title="搜尋">🔍</button>
+    </div>
+    <div id="autocomplete-list"></div>
+  </div>
+</div>
 
 <!-- 狀態提示 -->
 <div id="status"></div>
 
-<!-- 附近消防栓清單 -->
+<!-- 附近消防栓清單（右上角浮動） -->
 <div id="nearby-panel">
   <div id="nearby-header">
     <h3 id="nearby-title">附近消防栓</h3>
@@ -286,7 +530,7 @@
   <div id="nearby-list"></div>
 </div>
 
-<!-- 消防栓詳細資訊 -->
+<!-- 消防栓詳細資訊（底部抽屜） -->
 <div id="info-panel">
   <div id="info-drag"></div>
   <div id="info-top">
@@ -307,16 +551,18 @@
   <button class="ctrl-btn" id="btn-all"    onclick="toggleAll()"  title="顯示/隱藏全部">👁</button>
 </div>
 
-<!-- 圖例 -->
+<!-- 圖例（左下角水平膠囊） -->
 <div id="legend">
-  <div class="leg"><div class="dot" style="background:#e74c3c"></div>消防栓</div>
-  <div class="leg"><div class="dot" style="background:#f39c12"></div>最近幾支</div>
+  <div class="leg"><img src="img/hydrant-above.svg" style="width:16px;height:22px;object-fit:contain">地上式</div>
+  <div class="leg"><img src="img/hydrant-below.svg" style="width:16px;height:16px;object-fit:contain">地下式</div>
+  <div class="leg"><img src="img/hydrant-above-highlight.svg" style="width:16px;height:22px;object-fit:contain">最近幾支</div>
   <div class="leg"><div class="dot" style="background:#2980b9"></div>搜尋位置</div>
 </div>
 
 <div id="sync-info"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/autocomplete.js"></script>
 <script>
 // ═══════════════════════════════════════════════
 //  設定
@@ -338,25 +584,39 @@ const map = L.map('map', {
 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap contributors',
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CARTO',
   maxZoom: 19,
 }).addTo(map);
 
 // ── 圖標 ────────────────────────────────────────
-function makeIcon(color, r = 8) {
-  const d = r * 2;
-  return L.divIcon({
-    className: '',
-    html: `<div style="width:${d}px;height:${d}px;background:${color};
-      border:2px solid rgba(255,255,255,.9);border-radius:50%;
-      box-shadow:0 1px 5px rgba(0,0,0,.4)"></div>`,
-    iconSize: [d, d], iconAnchor: [r, r],
+function makeLeafletIcon(url, w, h, anchorX, anchorY) {
+  return L.icon({
+    iconUrl: url,
+    iconSize: [w, h],
+    iconAnchor: [anchorX, anchorY],
+    popupAnchor: [0, -anchorY],
   });
 }
-const ICON_NORMAL   = makeIcon('#e74c3c', 8);
-const ICON_NEARBY   = makeIcon('#f39c12', 10);
-const ICON_SELECTED = makeIcon('#c0392b', 11);
+
+const ICON_ABOVE          = makeLeafletIcon('img/hydrant-above.svg',           24, 34, 12, 34);
+const ICON_BELOW          = makeLeafletIcon('img/hydrant-below.svg',           22, 22, 11, 11);
+const ICON_ABOVE_HIGHLIGHT = makeLeafletIcon('img/hydrant-above-highlight.svg', 28, 38, 14, 38);
+const ICON_BELOW_HIGHLIGHT = makeLeafletIcon('img/hydrant-below-highlight.svg', 26, 26, 13, 13);
+
+function getHydrantType(feature) {
+  const name = String(feature.properties?.name || '');
+  const desc = String(feature.properties?.description || '');
+  const kind = String(feature.properties?.['消防栓種類'] || feature.properties?.['種類'] || '');
+  const combined = (name + desc + kind).toLowerCase();
+  if (combined.includes('地下')) return 'below';
+  return 'above';
+}
+
+function typeToIcon(type, highlight = false) {
+  if (type === 'below') return highlight ? ICON_BELOW_HIGHLIGHT : ICON_BELOW;
+  return highlight ? ICON_ABOVE_HIGHLIGHT : ICON_ABOVE;
+}
 
 // ═══════════════════════════════════════════════
 //  資料載入
@@ -386,14 +646,9 @@ fetch(DATA_URL)
       if (feature.geometry?.type !== 'Point') return;
       const [lng, lat] = feature.geometry.coordinates;
       const latlng = L.latLng(lat, lng);
+      const type = getHydrantType(feature);
 
-      const marker = L.circleMarker(latlng, {
-        radius: 8,
-        fillColor: '#e74c3c',
-        color: 'rgba(255,255,255,.85)',
-        weight: 2,
-        fillOpacity: .9,
-      });
+      const marker = L.marker(latlng, { icon: typeToIcon(type) });
 
       marker.on('click', e => {
         L.DomEvent.stopPropagation(e);
@@ -401,7 +656,7 @@ fetch(DATA_URL)
       });
 
       marker.addTo(layerGroup);
-      allPoints.push({ feature, latlng, marker });
+      allPoints.push({ feature, latlng, marker, type });
     });
 
     showStatus(`已載入 ${allPoints.length} 支消防栓`, 3000);
@@ -451,7 +706,14 @@ map.on('click', closeInfo);
 //  地址搜尋
 // ═══════════════════════════════════════════════
 document.getElementById('search-input')
-  .addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  .addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      // autocomplete 下拉展開中由 autocomplete.js 處理，避免雙重觸發
+      const acList = document.getElementById('autocomplete-list');
+      if (acList && acList.style.display === 'block') return;
+      doSearch();
+    }
+  });
 
 async function doSearch() {
   const q = document.getElementById('search-input').value.trim();
@@ -491,6 +753,24 @@ async function doSearch() {
   }
 }
 
+// ── Autocomplete 初始化 ─────────────────────────
+initAutocomplete(document.getElementById('search-input'), {
+  minChars: 2,
+  debounceMs: 350,
+  maxResults: 8,
+  onSelect({ address, lat, lng }) {
+    closeInfo();
+    if (searchMarker) map.removeLayer(searchMarker);
+    clearNearbyHighlights();
+    searchMarker = L.circleMarker([lat, lng], {
+      radius: 10, fillColor: '#2980b9', color: '#fff', weight: 3, fillOpacity: 1,
+    }).addTo(map).bindPopup(`📍 ${address}`).openPopup();
+    map.setView([lat, lng], 17);
+    showNearby(lat, lng);
+    showStatus(`顯示附近 ${nearbyCount} 支消防栓`, 3000);
+  },
+});
+
 // ═══════════════════════════════════════════════
 //  附近消防栓
 // ═══════════════════════════════════════════════
@@ -510,7 +790,7 @@ function showNearby(lat, lng) {
     .sort((a, b) => a.dist - b.dist)
     .slice(0, nearbyCount);
 
-  nearbyItems.forEach(item => item.marker.setStyle({ fillColor: '#f39c12', radius: 10 }));
+  nearbyItems.forEach(item => item.marker.setIcon(typeToIcon(item.type, true)));
 
   const listEl = document.getElementById('nearby-list');
   listEl.innerHTML = nearbyItems.map((item, i) => {
@@ -520,8 +800,9 @@ function showNearby(lat, lng) {
       ? `${Math.round(item.dist)} 公尺`
       : `${(item.dist/1000).toFixed(1)} 公里`;
     const lat = item.latlng.lat, lng = item.latlng.lng;
+    const distClass = item.dist < 100 ? 'dist-near' : item.dist < 300 ? 'dist-mid' : 'dist-far';
     return `
-      <div class="nearby-item" onclick="flyTo(${i})">
+      <div class="nearby-item ${distClass}" onclick="flyTo(${i})">
         <div class="nearby-name">${i+1}. ${name}</div>
         <div class="nearby-meta">📏 ${dm}</div>
         <a class="nearby-nav"
@@ -543,7 +824,7 @@ function flyTo(idx) {
 }
 
 function clearNearbyHighlights() {
-  nearbyItems.forEach(item => item.marker.setStyle({ fillColor: '#e74c3c', radius: 8 }));
+  nearbyItems.forEach(item => item.marker.setIcon(typeToIcon(item.type, false)));
   nearbyItems = [];
 }
 
