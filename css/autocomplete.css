@@ -121,6 +121,37 @@
   list-style: none;
 }
 
+/* ── 精度 Badge（街道 / 區域 / 場所） ─────────────────── */
+
+.ac-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}
+
+.ac-badge-street {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffcc80;
+}
+
+.ac-badge-district {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+}
+
+.ac-badge-place {
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #90caf9;
+}
+
 /* ── 捲動條美化（Webkit） ──────────────────────────────── */
 
 #autocomplete-list::-webkit-scrollbar {
