@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
+  <defs>
+    <!-- 蓋子漸層（模擬鑄鐵凸起感，左上亮右下暗） -->
+    <linearGradient id="lidGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5b642"/>
+      <stop offset="50%" stop-color="#f39c12"/>
+      <stop offset="100%" stop-color="#e67e22"/>
+    </linearGradient>
+    <!-- 外框漸層 -->
+    <linearGradient id="frameGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e67e22"/>
+      <stop offset="100%" stop-color="#d35400"/>
+    </linearGradient>
+    <!-- 斜線條紋 pattern -->
+    <pattern id="hatch" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="5" stroke="#d68910" stroke-width="1" stroke-opacity="0.45"/>
+    </pattern>
+  </defs>
+
+  <!-- ===== 外框（圓角方形）===== -->
+  <rect x="2" y="2" width="32" height="32" rx="4"
+        fill="url(#frameGrad)"
+        stroke="white" stroke-width="1.5"/>
+
+  <!-- 外框立體高光邊（上側與左側亮邊） -->
+  <path d="M4,4 L32,4" stroke="rgba(255,255,255,0.4)" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M4,4 L4,32" stroke="rgba(255,255,255,0.4)" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- 外框立體暗邊（下側與右側暗邊） -->
+  <path d="M4,32 L32,32" stroke="rgba(0,0,0,0.3)" stroke-width="1" stroke-linecap="round"/>
+  <path d="M32,4 L32,32" stroke="rgba(0,0,0,0.3)" stroke-width="1" stroke-linecap="round"/>
+
+  <!-- ===== 蓋子（稍小的圓角方形） ===== -->
+  <rect x="5" y="5" width="26" height="26" rx="3"
+        fill="url(#lidGrad)"/>
+
+  <!-- 防滑條紋 -->
+  <rect x="5" y="5" width="26" height="26" rx="3"
+        fill="url(#hatch)"/>
+
+  <!-- 蓋子立體高光邊 -->
+  <path d="M7,7 L29,7" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-linecap="round"/>
+  <path d="M7,7 L7,29" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-linecap="round"/>
+  <path d="M7,29 L29,29" stroke="rgba(0,0,0,0.25)" stroke-width="1" stroke-linecap="round"/>
+  <path d="M29,7 L29,29" stroke="rgba(0,0,0,0.25)" stroke-width="1" stroke-linecap="round"/>
+
+  <!-- ===== 中央「H」消防栓符號 ===== -->
+  <!-- 左豎 -->
+  <rect x="12" y="12" width="3" height="12" rx="1" fill="#7d3c00" fill-opacity="0.75"/>
+  <!-- 右豎 -->
+  <rect x="21" y="12" width="3" height="12" rx="1" fill="#7d3c00" fill-opacity="0.75"/>
+  <!-- 橫連 -->
+  <rect x="12" y="16.5" width="12" height="3" rx="1" fill="#7d3c00" fill-opacity="0.75"/>
+
+  <!-- 中央開啟孔（小圓形） -->
+  <circle cx="18" cy="18" r="2.5"
+          fill="#c57000" stroke="#7d3c00" stroke-width="1" stroke-opacity="0.6"/>
+  <circle cx="18" cy="18" r="1" fill="#7d3c00" fill-opacity="0.5"/>
+</svg>
