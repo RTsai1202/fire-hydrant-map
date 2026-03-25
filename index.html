@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>消防栓位置地圖 — 車籠埔分隊</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <link rel="stylesheet" href="css/autocomplete.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -418,6 +420,25 @@
       border-color: rgba(255, 255, 255, 0.2);
     }
 
+    /* ── MarkerCluster 消防栓主題 ───────────────── */
+    .marker-cluster-small div,
+    .marker-cluster-medium div,
+    .marker-cluster-large div {
+      background-color: rgba(210, 40, 40, 0.85);
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .marker-cluster-small {
+      background-color: rgba(240, 100, 100, 0.5);
+    }
+    .marker-cluster-medium {
+      background-color: rgba(210, 40, 40, 0.5);
+    }
+    .marker-cluster-large {
+      background-color: rgba(160, 20, 20, 0.5);
+    }
+
     /* ── 圖例（左下角水平膠囊） ─────────────────── */
     #legend {
       position: fixed;
@@ -562,6 +583,7 @@
 <div id="sync-info"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="js/autocomplete.js"></script>
 <script>
 // ═══════════════════════════════════════════════
@@ -571,6 +593,14 @@ const DATA_URL    = 'data/hydrants.geojson';
 const MAP_CENTER  = [24.086634809984165, 120.69584520999999];
 const MAP_ZOOM    = 14;
 const NEARBY_OPTIONS = [3, 5, 10];
+
+// Google Places API (New) Key
+// 空字串 = 不啟用，自動使用免費的 Photon/Nominatim 方案
+// 設定方式：Google Cloud Console → Places API (New) → 建立 API Key
+//   ① 限制 HTTP Referrer: https://rtsai1202.github.io/*
+//   ② 限制 API: 只勾 Places API (New)
+//   ③ 設定每日 Quota: 1000 次（Quotas & System Limits）
+const GOOGLE_PLACES_API_KEY = '';
 
 let nearbyCountIdx = 1;
 let nearbyCount    = NEARBY_OPTIONS[nearbyCountIdx];
@@ -625,7 +655,13 @@ function typeToIcon(type, highlight = false) {
 let allPoints   = [];  // [{ feature, latlng, marker }]
 let nearbyItems = [];
 let searchMarker = null;
-let layerGroup  = L.layerGroup().addTo(map);
+let layerGroup  = L.markerClusterGroup({
+  maxClusterRadius: 50,
+  spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false,
+  disableClusteringAtZoom: 18,
+  chunkedLoading: true,
+}).addTo(map);
 let layerVisible = true;
 
 fetch(DATA_URL)
