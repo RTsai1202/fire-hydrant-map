@@ -1,30 +1,34 @@
 /**
- * Taiwan Address Autocomplete v2
+ * Taiwan Address & Place Autocomplete v3
  *
- * 架構：
- *   主要 API → Nominatim structured query（分段解析，解決中文完整地址找不到的問題）
- *   備案 API → Nominatim free-text query（針對路名/地名的模糊預測）
- *   已停用  → NLSC TGLocator（實測 404，API 已失效）
+ * 搜尋策略（四層降級）：
+ *   [主力] Photon API (photon.komoot.io)
+ *          → 專為 autocomplete 設計，支援地址 + 場所名稱，無需 API key
  *
- * 地址解析策略（parseQuery）：
- *   輸入「臺中市太平區中興路118號」→ structured query (street + city)
- *   輸入「中興路118」（無鄉鎮市區）→ free-text query，讓 Nominatim 自行推斷
- *   輸入「太平區中興路」           → structured query (street=中興路, county=太平區)
- *   輸入「中興路」（純路名）       → free-text query 列出全台同名路
+ *   [地址備援 1] Nominatim free-text query
+ *          → 加台灣 viewbox，處理 Photon 找不到的結構化地址
+ *
+ *   [地址備援 2] Nominatim structured query（去門牌號）
+ *          → 「臺中市太平區中興路118號」找不到時，改查「中興路, 太平區」
+ *
+ *   [場所備援] Overpass API name 模糊搜尋
+ *          → 場所名稱（學校、加油站、廟宇）在 Photon/Nominatim 都找不到時
+ *
+ * 精度標記（precision）：
+ *   'exact'    → 找到精確門牌或場所，zoom 17
+ *   'street'   → 只找到街道（去掉門牌號），zoom 16
+ *   'district' → 只找到鄉鎮區，zoom 13
+ *   'place'    → Overpass 場所，zoom 16
+ *
+ * 輸入正規化：
+ *   - 全形數字/英文 → 半形
+ *   - 台 → 臺（OSM 以臺為主）
+ *   - 去掉多餘空白
  */
 
-/**
- * 初始化地址自動完成
- * @param {HTMLInputElement} inputEl - 搜尋輸入框元素
- * @param {Object} options
- * @param {Function} options.onSelect - 使用者選中候選項的回呼，傳入 { address, lat, lng }
- * @param {number} [options.minChars=2] - 最少幾個字才觸發
- * @param {number} [options.debounceMs=300] - 防抖延遲毫秒
- * @param {number} [options.maxResults=8] - 最多顯示幾筆
- */
 function initAutocomplete(inputEl, options) {
   const opts = Object.assign(
-    { minChars: 2, debounceMs: 300, maxResults: 8 },
+    { minChars: 2, debounceMs: 350, maxResults: 8 },
     options
   );
 
@@ -34,87 +38,157 @@ function initAutocomplete(inputEl, options) {
   let currentItems = [];
   let listEl = null;
 
-  // ── 台灣地址解析 ──────────────────────────────────────────
+  // ── 台灣地理常數 ───────────────────────────────────────────
+  // Photon bbox（台灣全島）
+  const TW_BBOX = '119.9,21.9,122.1,25.4'; // min_lon,min_lat,max_lon,max_lat
+  // Nominatim viewbox（台灣全島）：左下→右上
+  const TW_VIEWBOX = '119.9,21.9,122.1,25.4'; // west,south,east,north
+  // 地圖中心偏置（臺中市中心，讓結果優先附近）
+  const BIAS_LAT = 24.148;
+  const BIAS_LON = 120.668;
 
-  /**
-   * 台灣縣市對照表（含「臺」「台」兩種寫法）
-   */
-  const CITY_PATTERN =
-    /^(臺北市|台北市|新北市|桃園市|台中市|臺中市|台南市|臺南市|高雄市|基隆市|新竹市|嘉義市|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|宜蘭縣|花蓮縣|台東縣|臺東縣|澎湖縣|金門縣|連江縣)/;
+  // ── 輸入正規化 ────────────────────────────────────────────
 
-  /**
-   * 鄉鎮市區（區/鎮/鄉/市 結尾，2–4 字）
-   */
-  const DISTRICT_PATTERN = /(.{1,4}[區鎮鄉])/;
-
-  /**
-   * 路名（路/街/大道/巷/弄，可含段）
-   * 例：中興路、中山北路二段、忠孝東路四段
-   */
-  const ROAD_PATTERN = /(.{1,10}(?:路|街|大道|boulevard))(\d+段)?/;
-
-  /**
-   * 門牌號（數字＋可選「之N」＋「號」）
-   * 例：118號、118之3號、118-3號
-   */
-  const HOUSENUMBER_PATTERN = /(\d+(?:[之\-]\d+)?)\s*號?/;
-
-  /**
-   * 解析輸入字串，拆成 structured query 所需的各段。
-   * 回傳 { city, district, street, housenumber, rest }
-   *   - 任何欄位都可能是 null（表示輸入沒有這段）
-   */
-  function parseQuery(q) {
-    let s = q.trim();
-    const result = { city: null, district: null, street: null, housenumber: null };
-
-    // 1. 先抓縣市
-    const cityMatch = s.match(CITY_PATTERN);
-    if (cityMatch) {
-      result.city = cityMatch[1];
-      s = s.slice(result.city.length);
-    }
-
-    // 2. 抓鄉鎮市區
-    const districtMatch = s.match(/^(.{1,4}[區鎮鄉])/);
-    if (districtMatch) {
-      result.district = districtMatch[1];
-      s = s.slice(result.district.length);
-    }
-
-    // 3. 抓路名（含段）
-    const roadMatch = s.match(/^(.{1,10}?(?:路|街|大道)(?:\d+段)?)/);
-    if (roadMatch) {
-      result.street = roadMatch[1];
-      s = s.slice(result.street.length);
-    }
-
-    // 4. 抓門牌號（數字 + 可選「之/- N」+ 可選「號」）
-    const numMatch = s.match(/^(\d+(?:[之\-]\d+)?)\s*號?/);
-    if (numMatch) {
-      result.housenumber = numMatch[1] + '號';
-    }
-
-    return result;
+  function normalizeQuery(q) {
+    return q
+      .trim()
+      // 全形 → 半形
+      .replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+      // 去多餘空白
+      .replace(/\s+/g, ' ')
+      // 「台」→「臺」（OSM 台灣資料多用「臺」）
+      .replace(/台北/g, '臺北')
+      .replace(/台中/g, '臺中')
+      .replace(/台南/g, '臺南')
+      .replace(/台東/g, '臺東')
+      .replace(/台灣/g, '臺灣')
+      // 移除常見的不必要後綴（讓搜尋更容易命中）
+      .replace(/\s*[，,]\s*臺灣\s*$/, '')
+      .trim();
   }
 
-  /**
-   * 判斷輸入是否「夠結構化」，可使用 structured query。
-   * 條件：至少有路名，且有縣市或鄉鎮其一。
-   */
-  function isStructured(parsed) {
-    return !!parsed.street && (!!parsed.city || !!parsed.district);
+  // ── 台灣地址解析（用於 Nominatim 降級） ──────────────────
+
+  const CITY_RE = /(臺北市|台北市|新北市|桃園市|臺中市|台中市|臺南市|台南市|高雄市|基隆市|新竹市|嘉義市|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|宜蘭縣|花蓮縣|臺東縣|台東縣|澎湖縣|金門縣|連江縣)/;
+
+  function parseAddress(q) {
+    let s = q;
+    const r = { city: null, district: null, road: null, housenumber: null };
+
+    const cityM = s.match(CITY_RE);
+    if (cityM) { r.city = cityM[1]; s = s.slice(r.city.length); }
+
+    const distM = s.match(/^(.{1,4}[區鎮鄉])/);
+    if (distM) { r.district = distM[1]; s = s.slice(r.district.length); }
+
+    const roadM = s.match(/^(.{1,12}?(?:路|街|大道|boulevard)(?:\d+段)?)/);
+    if (roadM) { r.road = roadM[1]; s = s.slice(r.road.length); }
+
+    const numM = s.match(/^(\d+(?:[之\-]\d+)?)\s*號?/);
+    if (numM) r.housenumber = numM[1] + '號';
+
+    return r;
   }
 
-  // ── Nominatim Structured Query ────────────────────────────
+  // 判斷輸入是否像「場所名稱」而非地址（沒有路/街/道/號）
+  function looksLikePlaceName(q, parsed) {
+    return !parsed.road && !parsed.housenumber &&
+      !/\d/.test(q) &&
+      q.length >= 2;
+  }
 
-  /**
-   * 用分段參數查詢 Nominatim。
-   * 優點：能正確解析中文完整地址，不受「號」字結尾影響。
-   *
-   * 測試確認有效：
-   *   street=118號 中興路 & city=臺中市  → 正確回傳太平區中興路 118 號
-   */
+  // ── Photon API（主力） ─────────────────────────────────────
+  // https://photon.komoot.io/api/
+  // 回傳 GeoJSON，適合 autocomplete（部分輸入即可）
+
+  async function fetchPhoton(query, signal) {
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(opts.maxResults),
+      lang: 'zh',
+      lat: String(BIAS_LAT),
+      lon: String(BIAS_LON),
+    });
+
+    const url = `https://photon.komoot.io/api/?${params}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error(`Photon HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    return (geojson.features || [])
+      .filter(f => {
+        // 過濾掉不在臺灣的結果
+        const cc = (f.properties.countrycode || '').toLowerCase();
+        return cc === 'tw' || cc === '' || !f.properties.countrycode;
+      })
+      .slice(0, opts.maxResults)
+      .map(f => {
+        const [lon, lat] = f.geometry.coordinates;
+        const p = f.properties;
+
+        // 組合顯示地址（台灣慣用格式）
+        const address = buildPhotonAddress(p);
+        // 精度：有 housenumber 表示找到門牌
+        const precision = p.housenumber ? 'exact' : (p.type === 'house' ? 'exact' : 'street');
+
+        return {
+          address,
+          lat: parseFloat(lat),
+          lng: parseFloat(lon),
+          precision,
+          source: 'photon',
+          type: p.type || 'place',
+          _raw: p,
+        };
+      });
+  }
+
+  function buildPhotonAddress(p) {
+    // Photon properties: name, city, district, postcode, housenumber, street, country
+    const parts = [];
+    // 縣市
+    if (p.state) parts.push(p.state);
+    else if (p.county) parts.push(p.county);
+    // 鄉鎮區
+    if (p.district && p.district !== p.state) parts.push(p.district);
+    else if (p.city && p.city !== p.state) parts.push(p.city);
+    // 路名
+    if (p.street) parts.push(p.street);
+    // 門牌號
+    if (p.housenumber) parts.push(p.housenumber);
+    // 若無法組合，就用場所名稱
+    if (parts.length === 0 && p.name) return p.name;
+    // 場所名稱加在最後（如「臺中市太平區中興路 便利商店」）
+    const addrStr = parts.join('');
+    if (p.name && addrStr && !addrStr.includes(p.name)) {
+      return `${p.name}（${addrStr}）`;
+    }
+    return addrStr || p.name || '未知地點';
+  }
+
+  // ── Nominatim Free-text（地址備援 1） ─────────────────────
+
+  async function fetchNominatimFree(query, signal) {
+    const params = new URLSearchParams({
+      format: 'json',
+      q: query,
+      countrycodes: 'tw',
+      viewbox: TW_VIEWBOX,
+      limit: String(opts.maxResults),
+      addressdetails: '1',
+      'accept-language': 'zh-TW',
+      dedupe: '1',
+    });
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+      signal,
+      headers: { 'User-Agent': 'FireHydrantMap/3.0 (github.com/rtsai1202/fire-hydrant-map)' },
+    });
+    if (!res.ok) throw new Error(`Nominatim free HTTP ${res.status}`);
+    return normNominatim(await res.json());
+  }
+
+  // ── Nominatim Structured（地址備援 2：去門牌號） ──────────
+
   async function fetchNominatimStructured(parsed, signal) {
     const params = new URLSearchParams({
       format: 'json',
@@ -125,141 +199,158 @@ function initAutocomplete(inputEl, options) {
       dedupe: '1',
     });
 
-    // street 欄位：門牌號 + 路名（Nominatim 的 street 同時包含 housenumber 和 road）
     const streetParts = [];
-    if (parsed.housenumber) streetParts.push(parsed.housenumber);
-    if (parsed.street) streetParts.push(parsed.street);
+    // 去掉門牌號，只送路名（降級目的）
+    if (parsed.road) streetParts.push(parsed.road);
     if (streetParts.length) params.set('street', streetParts.join(' '));
-
-    // Nominatim 的 county = 鄉鎮市區（行政層級對應）
     if (parsed.district) params.set('county', parsed.district);
-    // city = 縣市
     if (parsed.city) params.set('city', parsed.city);
 
-    const url = `https://nominatim.openstreetmap.org/search?${params}`;
-    const res = await fetch(url, {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
       signal,
-      headers: { 'User-Agent': 'FireHydrantMap/2.0' },
+      headers: { 'User-Agent': 'FireHydrantMap/3.0 (github.com/rtsai1202/fire-hydrant-map)' },
     });
     if (!res.ok) throw new Error(`Nominatim structured HTTP ${res.status}`);
     const data = await res.json();
-    return normNominatim(data);
+    return normNominatim(data).map(r => ({ ...r, precision: 'street' }));
   }
 
-  /**
-   * 用 free-text 查詢 Nominatim（適合部分輸入、純路名、縣市+路名等）。
-   * 加上 Taiwan bias 讓結果偏向台灣地區。
-   */
-  async function fetchNominatimFreetext(query, signal) {
-    const params = new URLSearchParams({
-      format: 'json',
-      q: query,
-      countrycodes: 'tw',
-      limit: String(opts.maxResults),
-      'accept-language': 'zh-TW',
-      dedupe: '1',
-    });
+  // ── Overpass API（場所備援） ───────────────────────────────
+  // 用模糊名稱搜尋 OSM 節點/道路，適合「車籠埔國小」等場所名稱
 
-    const url = `https://nominatim.openstreetmap.org/search?${params}`;
-    const res = await fetch(url, {
+  async function fetchOverpass(query, signal) {
+    // 取前 4 個字做模糊匹配（避免太精確反而找不到）
+    const shortName = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 6);
+
+    const overpassQL = `
+[out:json][timeout:10];
+(
+  node["name"~"${shortName}"](21.9,119.9,25.4,122.1);
+  way["name"~"${shortName}"](21.9,119.9,25.4,122.1);
+);
+out center 6;
+    `.trim();
+
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
       signal,
-      headers: { 'User-Agent': 'FireHydrantMap/2.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(overpassQL),
     });
-    if (!res.ok) throw new Error(`Nominatim free-text HTTP ${res.status}`);
-    const data = await res.json();
-    return normNominatim(data);
+    if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
+    const json = await res.json();
+
+    return (json.elements || [])
+      .filter(el => el.tags && el.tags.name)
+      .slice(0, opts.maxResults)
+      .map(el => {
+        const lat = el.lat ?? el.center?.lat;
+        const lon = el.lon ?? el.center?.lon;
+        const tags = el.tags || {};
+        const name = tags['name:zh'] || tags.name || query;
+
+        // 嘗試組出地址
+        let address = name;
+        if (tags['addr:city']) address = tags['addr:city'] + (tags['addr:district'] || '') + name;
+
+        return {
+          address,
+          lat: parseFloat(lat),
+          lng: parseFloat(lon),
+          precision: 'place',
+          source: 'overpass',
+          type: tags.amenity || tags.leisure || tags.shop || 'place',
+        };
+      });
   }
 
-  /**
-   * 將 Nominatim 回傳格式標準化成 { address, lat, lng }。
-   * display_name 格式：「118號, 中興路, 中興里, 太平區, 長億里, 臺中市, 411, 臺灣」
-   * 轉成：「臺中市太平區中興路118號」（符合台灣習慣）
-   */
+  // ── Nominatim 結果正規化 ───────────────────────────────────
+
   function normNominatim(data) {
-    return data.slice(0, opts.maxResults).map((item) => {
+    return data.slice(0, opts.maxResults).map(item => {
       const addr = item.address || {};
       const display = buildTwAddress(addr) || item.display_name || '';
+      const hasHousenum = !!addr.house_number;
       return {
         address: display,
         lat: parseFloat(item.lat),
         lng: parseFloat(item.lon),
-        _raw: item.display_name, // 保留原始，用於 fallback 顯示
+        precision: hasHousenum ? 'exact' : 'street',
+        source: 'nominatim',
+        type: item.type || 'place',
+        _raw: item.display_name,
       };
     });
   }
 
-  /**
-   * 從 Nominatim addressdetails 物件組出台灣習慣的地址格式。
-   * 例："臺中市太平區中興路118號"
-   */
   function buildTwAddress(addr) {
-    const city =
-      addr.city || addr.county || addr.state_district || addr.state || '';
-    // Nominatim 的台灣鄉鎮市區在 suburb 或 town 或 village
-    const district =
-      addr.suburb || addr.town || addr.municipality || addr.village || '';
+    const city = addr.city || addr.county || addr.state_district || addr.state || '';
+    const district = addr.suburb || addr.town || addr.municipality || addr.village || '';
     const road = addr.road || '';
     const houseNum = addr.house_number || '';
-
     if (!road && !city) return null;
-
-    let result = '';
-    if (city) result += city;
-    if (district && district !== city) result += district;
-    if (road) result += road;
-    if (houseNum) result += houseNum;
-    return result || null;
+    let r = '';
+    if (city) r += city;
+    if (district && district !== city) r += district;
+    if (road) r += road;
+    if (houseNum) r += houseNum;
+    return r || null;
   }
 
-  // ── 主搜尋邏輯 ────────────────────────────────────────────
+  // ── 主搜尋邏輯（四層降級） ────────────────────────────────
 
-  /**
-   * 搜尋策略：
-   * 1. 解析輸入 → 判斷是否為結構化地址
-   * 2. 結構化（有路名+縣市/鄉鎮）→ 優先 structured query
-   *    - 若結果空，降級到 free-text
-   * 3. 非結構化（純路名、部分輸入）→ 直接 free-text query
-   * 4. 兩者都空 → 顯示「找不到」
-   */
-  async function fetchResults(query) {
+  async function fetchResults(rawQuery) {
     if (currentAbortController) currentAbortController.abort();
     currentAbortController = new AbortController();
     const { signal } = currentAbortController;
-    const timeoutId = setTimeout(() => currentAbortController.abort(), 5000);
+    const timeoutId = setTimeout(() => currentAbortController.abort(), 8000);
 
     try {
-      const parsed = parseQuery(query);
+      const query = normalizeQuery(rawQuery);
+      const parsed = parseAddress(query);
+      const isPlace = looksLikePlaceName(query, parsed);
       let results = [];
 
-      if (isStructured(parsed)) {
-        // 有縣市/鄉鎮 + 路名 → structured query
+      // ── 第一層：Photon（地址 + 場所都試） ──────────────────
+      try {
+        results = await fetchPhoton(query, signal);
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+      }
+
+      if (results.length > 0) return results;
+
+      // ── 第二層：Nominatim free-text ────────────────────────
+      try {
+        results = await fetchNominatimFree(query, signal);
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+      }
+
+      if (results.length > 0) return results;
+
+      // ── 第三層：Nominatim structured（去門牌號，僅地址型） ─
+      if (!isPlace && parsed.road && (parsed.city || parsed.district)) {
         try {
           results = await fetchNominatimStructured(parsed, signal);
         } catch (e) {
           if (e.name === 'AbortError') throw e;
-          results = [];
         }
+        if (results.length > 0) return results;
+      }
 
-        // structured 無結果 → 降級 free-text
-        if (results.length === 0) {
-          try {
-            results = await fetchNominatimFreetext(query, signal);
-          } catch (e) {
-            if (e.name === 'AbortError') throw e;
-            results = [];
-          }
-        }
-      } else {
-        // 部分輸入或純路名 → free-text query（提供預測建議）
+      // ── 第四層：Overpass 場所名稱搜尋 ──────────────────────
+      // 場所名稱才試 Overpass（避免地址型查詢污染）
+      if (isPlace || results.length === 0) {
         try {
-          results = await fetchNominatimFreetext(query, signal);
+          results = await fetchOverpass(query, signal);
         } catch (e) {
           if (e.name === 'AbortError') throw e;
-          results = [];
         }
       }
 
       return results;
+
     } finally {
       clearTimeout(timeoutId);
     }
@@ -302,29 +393,40 @@ function initAutocomplete(inputEl, options) {
 
   function highlightText(text, keyword) {
     if (!keyword) return escapeHtml(text);
-    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(${escaped})`, 'gi');
-    return escapeHtml(text).replace(re, '<mark>$1</mark>');
+    // 嘗試匹配原始輸入和正規化後的關鍵字
+    const kw = keyword.replace(/台/g, '[台臺]').replace(/[.*+?^${}()|[\]\\]/g, m => m === '[' || m === ']' ? m : '\\' + m);
+    try {
+      const re = new RegExp(`(${kw})`, 'gi');
+      return escapeHtml(text).replace(re, '<mark>$1</mark>');
+    } catch {
+      return escapeHtml(text);
+    }
   }
 
-  /**
-   * 從地址字串解析「縣市 鄉鎮區」作為副標題。
-   * 優先從開頭匹配，若地址是台灣慣用格式（縣市開頭）直接抓。
-   * 若是 Nominatim display_name 逗號格式，取後段。
-   */
-  function parseSubText(address) {
-    // 台灣慣用格式：臺中市太平區... → "臺中市 太平區"
-    const m = address.match(/^(.{2,4}[市縣])(.{2,4}[區鎮鄉市])/);
-    if (m) return `${m[1]} · ${m[2]}`;
+  // 精度 badge 標籤
+  const PRECISION_BADGE = {
+    exact:    '',
+    street:   '<span class="ac-badge ac-badge-street">街道</span>',
+    district: '<span class="ac-badge ac-badge-district">區域</span>',
+    place:    '<span class="ac-badge ac-badge-place">場所</span>',
+  };
 
-    // Nominatim display_name 逗號格式：取最後「臺灣」前的縣市欄位
-    const parts = address.split(',').map((s) => s.trim());
-    // 通常縣市在倒數第 3 個（最後是「臺灣」，倒數第 2 是郵遞區號）
-    if (parts.length >= 3) {
-      const city = parts[parts.length - 3];
-      if (city && city !== '臺灣') return city;
+  // 來源 icon
+  const SOURCE_ICON = {
+    photon:    '📍',
+    nominatim: '🗺',
+    overpass:  '🔍',
+  };
+
+  function parseSubText(item) {
+    const addr = item.address || '';
+    // 台灣慣用格式開頭
+    const m = addr.match(/^(.{2,4}[市縣])(.{2,4}[區鎮鄉市])?/);
+    if (m) {
+      return m[2] ? `${m[1]} · ${m[2]}` : m[1];
     }
-    return address.slice(0, 8);
+    if (item.source === 'overpass') return '地圖資料（OSM）';
+    return addr.slice(0, 10);
   }
 
   // ── 渲染 ──────────────────────────────────────────────────
@@ -345,7 +447,7 @@ function initAutocomplete(inputEl, options) {
     list.style.display = 'block';
     const li = document.createElement('li');
     li.className = 'ac-empty';
-    li.textContent = '找不到符合的地址';
+    li.textContent = '找不到符合的地址或場所，請嘗試更完整的地址';
     list.appendChild(li);
   }
 
@@ -368,13 +470,16 @@ function initAutocomplete(inputEl, options) {
       li.setAttribute('role', 'option');
       li.dataset.index = idx;
 
+      const badge = PRECISION_BADGE[item.precision] || '';
+      const icon = SOURCE_ICON[item.source] || '📍';
+
       const main = document.createElement('div');
       main.className = 'ac-item-main';
-      main.innerHTML = highlightText(item.address, query);
+      main.innerHTML = highlightText(item.address, query) + badge;
 
       const sub = document.createElement('div');
       sub.className = 'ac-item-sub';
-      sub.textContent = parseSubText(item.address);
+      sub.textContent = parseSubText(item);
 
       li.appendChild(main);
       li.appendChild(sub);
@@ -396,7 +501,13 @@ function initAutocomplete(inputEl, options) {
     inputEl.value = item.address;
     destroyList();
     if (typeof opts.onSelect === 'function') {
-      opts.onSelect({ address: item.address, lat: item.lat, lng: item.lng });
+      opts.onSelect({
+        address: item.address,
+        lat: item.lat,
+        lng: item.lng,
+        precision: item.precision || 'exact',
+        source: item.source || 'unknown',
+      });
     }
   }
 

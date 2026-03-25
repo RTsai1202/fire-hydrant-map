@@ -759,16 +759,23 @@ initAutocomplete(document.getElementById('search-input'), {
   minChars: 2,
   debounceMs: 350,
   maxResults: 8,
-  onSelect({ address, lat, lng }) {
+  onSelect({ address, lat, lng, precision }) {
     closeInfo();
     if (searchMarker) map.removeLayer(searchMarker);
     clearNearbyHighlights();
     searchMarker = L.circleMarker([lat, lng], {
       radius: 10, fillColor: '#2980b9', color: '#fff', weight: 3, fillOpacity: 1,
     }).addTo(map).bindPopup(`📍 ${address}`).openPopup();
-    map.setView([lat, lng], 17);
+    // 根據搜尋精度決定縮放層級
+    const zoomMap = { exact: 17, street: 16, district: 13, place: 16 };
+    map.setView([lat, lng], zoomMap[precision] || 17);
     showNearby(lat, lng);
-    showStatus(`顯示附近 ${nearbyCount} 支消防栓`, 3000);
+    const precisionNote = {
+      street:   '（找不到門牌，已顯示街道位置）',
+      district: '（找不到地址，已顯示區域位置）',
+      place:    '（地圖資料中的場所）',
+    }[precision] || '';
+    showStatus(`顯示附近 ${nearbyCount} 支消防栓${precisionNote}`, precisionNote ? 5000 : 3000);
   },
 });
 
