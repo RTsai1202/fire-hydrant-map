@@ -143,7 +143,7 @@ function initAutocomplete(inputEl, options) {
         locationBias: {
           circle: {
             center: { latitude: BIAS_LAT, longitude: BIAS_LON },
-            radius: 80000,
+            radius: 50000,
           },
         },
       }),
