@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>消防栓位置地圖 — 十九甲分隊</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── 頂部搜尋列 ─────────────────────────── */
+    #header {
+      background: #c0392b;
+      color: #fff;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.35);
+      z-index: 500;
+      flex-shrink: 0;
+    }
+    #header-title {
+      font-size: 15px;
+      font-weight: 700;
+      white-space: nowrap;
+      letter-spacing: .5px;
+    }
+    #search-wrap {
+      flex: 1;
+      position: relative;
+    }
+    #search-input {
+      width: 100%;
+      padding: 8px 40px 8px 14px;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      outline: none;
+      background: rgba(255,255,255,.95);
+    }
+    #search-input::placeholder { color: #aaa; }
+    #search-btn {
+      position: absolute;
+      right: 4px; top: 50%;
+      transform: translateY(-50%);
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 30px; height: 30px;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s;
+    }
+    #search-btn:hover { background: #96281b; }
+
+    /* ── 地圖 ───────────────────────────────── */
+    #map { flex: 1; }
+
+    /* ── 狀態提示 ───────────────────────────── */
+    #status {
+      position: fixed;
+      top: 64px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,.72);
+      color: #fff;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      pointer-events: none;
+      z-index: 900;
+      white-space: nowrap;
+      display: none;
+    }
+
+    /* ── 載入遮罩 ───────────────────────────── */
+    #loading {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.55);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 9999; color: #fff; gap: 14px;
+    }
+    .spinner {
+      width: 42px; height: 42px;
+      border: 4px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-msg { font-size: 15px; }
+
+    /* ── 附近消防栓清單 ─────────────────────── */
+    #nearby-panel {
+      position: fixed;
+      top: 62px; right: 10px;
+      width: 240px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 3px 16px rgba(0,0,0,.22);
+      z-index: 700;
+      display: none;
+      max-height: calc(100dvh - 140px);
+      overflow: hidden;
+      display: none;
+      flex-direction: column;
+    }
+    #nearby-panel.open { display: flex; }
+    #nearby-header {
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #nearby-header h3 { font-size: 13px; color: #c0392b; }
+    .panel-close {
+      background: none; border: none;
+      color: #999; cursor: pointer; font-size: 18px; line-height: 1;
+      padding: 0 2px;
+    }
+    .panel-close:hover { color: #333; }
+    #nearby-list { overflow-y: auto; }
+    .nearby-item {
+      padding: 9px 12px;
+      border-bottom: 1px solid #f5f5f5;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .nearby-item:hover { background: #fff5f5; }
+    .nearby-name { font-size: 13px; font-weight: 600; color: #222; }
+    .nearby-meta { font-size: 11px; color: #888; margin-top: 2px; }
+    .nearby-nav {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 11px;
+      color: #4285f4;
+      text-decoration: none;
+    }
+
+    /* ── 消防栓詳細資訊面板（底部抽屜） ──── */
+    #info-panel {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #fff;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 24px rgba(0,0,0,.2);
+      z-index: 800;
+      max-height: 65dvh;
+      overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+      padding: 16px 16px 24px;
+    }
+    #info-panel.open { transform: translateY(0); }
+    #info-drag {
+      width: 40px; height: 4px;
+      background: #ddd; border-radius: 2px;
+      margin: 0 auto 14px;
+    }
+    #info-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    #info-title { font-size: 17px; font-weight: 700; color: #c0392b; }
+    #info-body .row {
+      display: flex;
+      padding: 7px 0;
+      border-bottom: 1px solid #f2f2f2;
+      font-size: 13px;
+    }
+    #info-body .row:last-child { border-bottom: none; }
+    #info-body .lbl { color: #888; width: 90px; flex-shrink: 0; }
+    #info-body .val { color: #222; font-weight: 500; }
+    #info-nav {
+      display: flex; gap: 8px; margin-top: 14px;
+    }
+    .nav-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      border: none; cursor: pointer;
+    }
+    .nav-btn-google {
+      background: #4285f4; color: #fff;
+    }
+    .nav-btn-apple {
+      background: #f5f5f5; color: #333;
+    }
+
+    /* ── 右下控制按鈕 ───────────────────────── */
+    #controls {
+      position: fixed;
+      right: 10px; bottom: 100px;
+      display: flex; flex-direction: column;
+      gap: 8px; z-index: 700;
+    }
+    .ctrl-btn {
+      background: #fff;
+      border: none;
+      border-radius: 10px;
+      width: 42px; height: 42px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.18);
+      cursor: pointer;
+      font-size: 19px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s, color .2s;
+    }
+    .ctrl-btn:hover { background: #f5f5f5; }
+    .ctrl-btn.active { background: #c0392b; color: #fff; }
+
+    /* ── 圖例 ───────────────────────────────── */
+    #legend {
+      position: fixed;
+      bottom: 20px; left: 10px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(6px);
+      border-radius: 8px;
+      padding: 8px 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      z-index: 700;
+      font-size: 12px;
+    }
+    .leg { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+    .leg:last-child { margin-bottom: 0; }
+    .dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.8);
+      flex-shrink: 0;
+    }
+
+    /* ── 同步時間角標 ───────────────────────── */
+    #sync-info {
+      position: fixed;
+      bottom: 6px; right: 10px;
+      font-size: 10px; color: #aaa;
+      z-index: 700;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 載入遮罩 -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-msg">載入消防栓資料中…</div>
+</div>
+
+<!-- 頂部搜尋列 -->
+<div id="header">
+  <div id="header-title">🔴 消防栓地圖</div>
+  <div id="search-wrap">
+    <input id="search-input" type="text" placeholder="輸入地址，查詢附近消防栓…" autocomplete="off" />
+    <button id="search-btn" onclick="doSearch()" title="搜尋">🔍</button>
+  </div>
+</div>
+
+<!-- 地圖 -->
+<div id="map"></div>
+
+<!-- 狀態提示 -->
+<div id="status"></div>
+
+<!-- 附近消防栓清單 -->
+<div id="nearby-panel">
+  <div id="nearby-header">
+    <h3 id="nearby-title">附近消防栓</h3>
+    <button class="panel-close" onclick="closeNearby()">✕</button>
+  </div>
+  <div id="nearby-list"></div>
+</div>
+
+<!-- 消防栓詳細資訊 -->
+<div id="info-panel">
+  <div id="info-drag"></div>
+  <div id="info-top">
+    <div id="info-title"></div>
+    <button class="panel-close" onclick="closeInfo()">✕</button>
+  </div>
+  <div id="info-body"></div>
+  <div id="info-nav">
+    <a id="info-nav-google" class="nav-btn nav-btn-google" href="#" target="_blank">🗺 Google Maps 導航</a>
+    <a id="info-nav-apple"  class="nav-btn nav-btn-apple"  href="#" target="_blank">🍎 Apple Maps 導航</a>
+  </div>
+</div>
+
+<!-- 右下控制 -->
+<div id="controls">
+  <button class="ctrl-btn" id="btn-locate" onclick="locateMe()" title="我的位置">📍</button>
+  <button class="ctrl-btn" id="btn-count"  onclick="cycleCount()" title="附近顯示數量">5</button>
+  <button class="ctrl-btn" id="btn-all"    onclick="toggleAll()"  title="顯示/隱藏全部">👁</button>
+</div>
+
+<!-- 圖例 -->
+<div id="legend">
+  <div class="leg"><div class="dot" style="background:#e74c3c"></div>消防栓</div>
+  <div class="leg"><div class="dot" style="background:#f39c12"></div>最近幾支</div>
+  <div class="leg"><div class="dot" style="background:#2980b9"></div>搜尋位置</div>
+</div>
+
+<div id="sync-info"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ═══════════════════════════════════════════════
+//  設定
+// ═══════════════════════════════════════════════
+const DATA_URL    = 'data/hydrants.geojson';
+const MAP_CENTER  = [24.086634809984165, 120.69584520999999];
+const MAP_ZOOM    = 14;
+const NEARBY_OPTIONS = [3, 5, 10];
+
+let nearbyCountIdx = 1;
+let nearbyCount    = NEARBY_OPTIONS[nearbyCountIdx];
+
+// ═══════════════════════════════════════════════
+//  地圖初始化
+// ═══════════════════════════════════════════════
+const map = L.map('map', {
+  center: MAP_CENTER, zoom: MAP_ZOOM,
+  zoomControl: false,
+});
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 19,
+}).addTo(map);
+
+// ── 圖標 ────────────────────────────────────────
+function makeIcon(color, r = 8) {
+  const d = r * 2;
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${d}px;height:${d}px;background:${color};
+      border:2px solid rgba(255,255,255,.9);border-radius:50%;
+      box-shadow:0 1px 5px rgba(0,0,0,.4)"></div>`,
+    iconSize: [d, d], iconAnchor: [r, r],
+  });
+}
+const ICON_NORMAL   = makeIcon('#e74c3c', 8);
+const ICON_NEARBY   = makeIcon('#f39c12', 10);
+const ICON_SELECTED = makeIcon('#c0392b', 11);
+
+// ═══════════════════════════════════════════════
+//  資料載入
+// ═══════════════════════════════════════════════
+let allPoints   = [];  // [{ feature, latlng, marker }]
+let nearbyItems = [];
+let searchMarker = null;
+let layerGroup  = L.layerGroup().addTo(map);
+let layerVisible = true;
+
+fetch(DATA_URL)
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('loading').style.display = 'none';
+
+    if (!data.features || data.features.length === 0) {
+      showStatus('⚠️ 資料尚未同步，請在 GitHub 手動執行 Action', 0);
+      return;
+    }
+
+    // 同步時間
+    if (data._synced) {
+      document.getElementById('sync-info').textContent = `資料同步：${data._synced}`;
+    }
+
+    data.features.forEach(feature => {
+      if (feature.geometry?.type !== 'Point') return;
+      const [lng, lat] = feature.geometry.coordinates;
+      const latlng = L.latLng(lat, lng);
+
+      const marker = L.circleMarker(latlng, {
+        radius: 8,
+        fillColor: '#e74c3c',
+        color: 'rgba(255,255,255,.85)',
+        weight: 2,
+        fillOpacity: .9,
+      });
+
+      marker.on('click', e => {
+        L.DomEvent.stopPropagation(e);
+        showInfo(feature, latlng);
+      });
+
+      marker.addTo(layerGroup);
+      allPoints.push({ feature, latlng, marker });
+    });
+
+    showStatus(`已載入 ${allPoints.length} 支消防栓`, 3000);
+  })
+  .catch(() => {
+    document.getElementById('loading-msg').textContent = '❌ 資料載入失敗，請確認 data/hydrants.geojson 存在';
+  });
+
+// ═══════════════════════════════════════════════
+//  消防栓資訊面板
+// ═══════════════════════════════════════════════
+const SKIP_KEYS = new Set(['name', 'Name', 'description', 'styleUrl',
+  'styleHash', 'styleMapHash', 'stroke', 'fill', 'fill-opacity', 'stroke-width']);
+
+function showInfo(feature, latlng) {
+  const p = feature.properties || {};
+  const title = p.name || p['消防栓編號'] || '消防栓';
+  const lat = latlng.lat, lng = latlng.lng;
+
+  document.getElementById('info-title').textContent = `🔴 ${title}`;
+
+  let html = '';
+  Object.entries(p).forEach(([k, v]) => {
+    if (SKIP_KEYS.has(k) || !v || !String(v).trim()) return;
+    html += `<div class="row"><span class="lbl">${k}</span><span class="val">${v}</span></div>`;
+  });
+  html += `<div class="row"><span class="lbl">座標</span><span class="val">${lat.toFixed(6)}, ${lng.toFixed(6)}</span></div>`;
+  document.getElementById('info-body').innerHTML = html;
+
+  const dest = `${lat},${lng}`;
+  document.getElementById('info-nav-google').href =
+    `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+  document.getElementById('info-nav-apple').href =
+    `https://maps.apple.com/?daddr=${dest}&dirflg=d`;
+
+  document.getElementById('info-panel').classList.add('open');
+  map.panTo(latlng);
+}
+
+function closeInfo() {
+  document.getElementById('info-panel').classList.remove('open');
+}
+
+map.on('click', closeInfo);
+
+// ═══════════════════════════════════════════════
+//  地址搜尋
+// ═══════════════════════════════════════════════
+document.getElementById('search-input')
+  .addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+  showStatus('搜尋中…', 0);
+  closeInfo();
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=tw&limit=1`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'zh-TW' } });
+    const data = await res.json();
+
+    if (!data.length) { showStatus('找不到該地址', 3000); return; }
+
+    const lat = parseFloat(data[0].lat);
+    const lng = parseFloat(data[0].lon);
+    const label = data[0].display_name.split(',').slice(0, 3).join('');
+
+    // 舊搜尋標記清除
+    if (searchMarker) map.removeLayer(searchMarker);
+    clearNearbyHighlights();
+
+    searchMarker = L.circleMarker([lat, lng], {
+      radius: 10,
+      fillColor: '#2980b9',
+      color: '#fff',
+      weight: 3,
+      fillOpacity: 1,
+    }).addTo(map).bindPopup(`📍 ${label}`).openPopup();
+
+    map.setView([lat, lng], 17);
+    showNearby(lat, lng);
+    showStatus(`顯示附近 ${nearbyCount} 支消防栓`, 3000);
+
+  } catch {
+    showStatus('搜尋失敗，請稍後再試', 3000);
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  附近消防栓
+// ═══════════════════════════════════════════════
+function haversineDist(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function showNearby(lat, lng) {
+  clearNearbyHighlights();
+
+  nearbyItems = allPoints
+    .map(pt => ({ ...pt, dist: haversineDist(lat, lng, pt.latlng.lat, pt.latlng.lng) }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, nearbyCount);
+
+  nearbyItems.forEach(item => item.marker.setStyle({ fillColor: '#f39c12', radius: 10 }));
+
+  const listEl = document.getElementById('nearby-list');
+  listEl.innerHTML = nearbyItems.map((item, i) => {
+    const p  = item.feature.properties || {};
+    const name = p.name || p['消防栓編號'] || '消防栓';
+    const dm = item.dist < 1000
+      ? `${Math.round(item.dist)} 公尺`
+      : `${(item.dist/1000).toFixed(1)} 公里`;
+    const lat = item.latlng.lat, lng = item.latlng.lng;
+    return `
+      <div class="nearby-item" onclick="flyTo(${i})">
+        <div class="nearby-name">${i+1}. ${name}</div>
+        <div class="nearby-meta">📏 ${dm}</div>
+        <a class="nearby-nav"
+           href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving"
+           target="_blank"
+           onclick="event.stopPropagation()">🗺 導航前往</a>
+      </div>`;
+  }).join('');
+
+  document.getElementById('nearby-title').textContent = `附近 ${nearbyCount} 支消防栓`;
+  document.getElementById('nearby-panel').classList.add('open');
+}
+
+function flyTo(idx) {
+  const item = nearbyItems[idx];
+  if (!item) return;
+  map.setView(item.latlng, 18);
+  showInfo(item.feature, item.latlng);
+}
+
+function clearNearbyHighlights() {
+  nearbyItems.forEach(item => item.marker.setStyle({ fillColor: '#e74c3c', radius: 8 }));
+  nearbyItems = [];
+}
+
+function closeNearby() {
+  clearNearbyHighlights();
+  document.getElementById('nearby-panel').classList.remove('open');
+  if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+}
+
+// ═══════════════════════════════════════════════
+//  我的位置
+// ═══════════════════════════════════════════════
+function locateMe() {
+  showStatus('定位中…', 0);
+  map.locate({ setView: true, maxZoom: 17 });
+  map.once('locationfound', e => {
+    if (searchMarker) map.removeLayer(searchMarker);
+    clearNearbyHighlights();
+    searchMarker = L.circleMarker(e.latlng, {
+      radius: 10, fillColor: '#2980b9', color: '#fff', weight: 3, fillOpacity: 1,
+    }).addTo(map).bindPopup('📍 我的位置').openPopup();
+    showNearby(e.latlng.lat, e.latlng.lng);
+    showStatus(`已定位，顯示附近 ${nearbyCount} 支消防栓`, 3000);
+  });
+  map.once('locationerror', () => showStatus('無法取得位置', 3000));
+}
+
+// ═══════════════════════════════════════════════
+//  切換附近數量
+// ═══════════════════════════════════════════════
+function cycleCount() {
+  nearbyCountIdx = (nearbyCountIdx + 1) % NEARBY_OPTIONS.length;
+  nearbyCount = NEARBY_OPTIONS[nearbyCountIdx];
+  document.getElementById('btn-count').textContent = nearbyCount;
+  showStatus(`附近顯示 ${nearbyCount} 支`, 2000);
+}
+
+// ═══════════════════════════════════════════════
+//  顯示 / 隱藏全部標記
+// ═══════════════════════════════════════════════
+function toggleAll() {
+  const btn = document.getElementById('btn-all');
+  layerVisible = !layerVisible;
+  if (layerVisible) {
+    map.addLayer(layerGroup);
+    btn.classList.remove('active');
+  } else {
+    map.removeLayer(layerGroup);
+    btn.classList.add('active');
+  }
+  showStatus(layerVisible ? '顯示全部消防栓' : '已隱藏消防栓標記', 2000);
+}
+
+// ═══════════════════════════════════════════════
+//  狀態提示
+// ═══════════════════════════════════════════════
+let statusTimer;
+function showStatus(msg, duration = 2500) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(statusTimer);
+  if (duration > 0) statusTimer = setTimeout(() => { el.style.display = 'none'; }, duration);
+}
+</script>
+</body>
+</html>
