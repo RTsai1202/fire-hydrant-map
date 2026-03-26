@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>消防栓位置地圖 — 車籠埔分隊</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -74,7 +74,7 @@
       padding: 9px 14px;
       border: 1.5px solid #e8e8e8;
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       outline: none;
       background: #f9f9f9;
       color: #222;
@@ -93,8 +93,8 @@
       color: #fff;
       border: none;
       border-radius: 8px;
-      width: 36px;
-      height: 36px;
+      width: 44px;
+      height: 44px;
       cursor: pointer;
       font-size: 15px;
       display: flex;
@@ -209,9 +209,13 @@
       border: none;
       color: #777;
       cursor: pointer;
-      font-size: 13px;
+      font-size: 15px;
       line-height: 1;
-      padding: 4px 7px;
+      min-width: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       border-radius: 50%;
       transition: background 0.15s, color 0.15s;
     }
@@ -269,10 +273,11 @@
     .nearby-nav {
       display: inline-block;
       margin-top: 5px;
-      font-size: 11px;
+      font-size: 13px;
       color: #4285f4;
       text-decoration: none;
       font-weight: 500;
+      padding: 6px 0;
     }
 
     .nearby-nav:hover { text-decoration: underline; }
@@ -292,7 +297,7 @@
       overflow-y: auto;
       transform: translateY(100%);
       transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-      padding: 0 0 28px;
+      padding: 0 0 calc(28px + env(safe-area-inset-bottom));
     }
 
     #info-panel.open { transform: translateY(0); }
@@ -305,8 +310,12 @@
       height: 4px;
       background: #ddd;
       border-radius: 2px;
-      margin: 12px auto 4px;
+      margin: 0 auto;
       flex-shrink: 0;
+      padding: 14px 0;
+      background-clip: content-box;
+      cursor: grab;
+      touch-action: none;
     }
 
     #info-top {
@@ -386,7 +395,8 @@
     #controls {
       position: fixed;
       right: 14px;
-      bottom: 110px;
+      bottom: calc(110px + env(safe-area-inset-bottom));
+      transition: bottom 0.32s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -442,7 +452,7 @@
     /* ── 圖例（左下角水平膠囊） ─────────────────── */
     #legend {
       position: fixed;
-      bottom: 20px;
+      bottom: calc(20px + env(safe-area-inset-bottom));
       left: 12px;
       background: rgba(10, 10, 20, 0.68);
       backdrop-filter: blur(10px);
@@ -484,6 +494,21 @@
       pointer-events: none;
     }
 
+    /* ── 使用者即時定位藍點 ──────────────────────── */
+    @keyframes user-dot-pulse {
+      0%   { transform: scale(1);   opacity: 0.5; }
+      70%  { transform: scale(2.5); opacity: 0; }
+      100% { transform: scale(2.5); opacity: 0; }
+    }
+
+    .user-dot-pulse {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(66, 133, 244, 0.35);
+      animation: user-dot-pulse 2s ease-out infinite;
+    }
+
     /* ── 響應式（手機） ──────────────────────────── */
     @media (max-width: 768px) {
       #search-card {
@@ -498,11 +523,16 @@
         width: 100%;
         border-radius: 16px 16px 0 0;
         max-height: 50dvh;
+        padding-bottom: env(safe-area-inset-bottom);
       }
 
       #controls {
         right: 12px;
-        bottom: 90px;
+        bottom: calc(90px + env(safe-area-inset-bottom));
+      }
+
+      #controls.panel-open {
+        bottom: calc(65dvh + 20px + env(safe-area-inset-bottom));
       }
 
       #legend {
@@ -655,6 +685,12 @@ function typeToIcon(type, highlight = false) {
 let allPoints   = [];  // [{ feature, latlng, marker }]
 let nearbyItems = [];
 let searchMarker = null;
+// ── 即時定位圖層（與 searchMarker 獨立） ─────────
+let userDot      = null;   // 藍色實心圓點
+let userPulse    = null;   // 呼吸光圈（L.divIcon）
+let userAccuracy = null;   // GPS 精度半徑圈
+let watchId      = null;   // navigator.geolocation.watchPosition ID
+let userLatLng   = null;   // 最新使用者座標
 let layerGroup  = L.markerClusterGroup({
   maxClusterRadius: 50,
   spiderfyOnMaxZoom: true,
@@ -730,14 +766,55 @@ function showInfo(feature, latlng) {
     `https://maps.apple.com/?daddr=${dest}&dirflg=d`;
 
   document.getElementById('info-panel').classList.add('open');
+  document.getElementById('controls').classList.add('panel-open');
+  // 手機：info-panel 開啟時收起 nearby-panel 避免重疊
+  if (window.innerWidth <= 768) {
+    document.getElementById('nearby-panel').classList.remove('open');
+  }
   map.panTo(latlng);
 }
 
 function closeInfo() {
-  document.getElementById('info-panel').classList.remove('open');
+  const panel = document.getElementById('info-panel');
+  panel.style.transform = '';
+  panel.classList.remove('open');
+  document.getElementById('controls').classList.remove('panel-open');
 }
 
 map.on('click', closeInfo);
+
+// ── info-panel 拖曳關閉（向下滑超過 80px 則關閉） ──
+(function initInfoDrag() {
+  const panel = document.getElementById('info-panel');
+  const drag  = document.getElementById('info-drag');
+  let startY = 0, currentY = 0, dragging = false;
+
+  drag.addEventListener('touchstart', (e) => {
+    dragging = true;
+    startY = e.touches[0].clientY;
+    currentY = 0;
+    panel.style.transition = 'none';
+  }, { passive: true });
+
+  drag.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    currentY = e.touches[0].clientY - startY;
+    if (currentY < 0) currentY = 0;
+    panel.style.transform = `translateY(${currentY}px)`;
+  }, { passive: true });
+
+  drag.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    panel.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+    if (currentY > 80) {
+      closeInfo();
+    } else {
+      panel.style.transform = 'translateY(0)';
+    }
+    currentY = 0;
+  });
+})();
 
 // ═══════════════════════════════════════════════
 //  地址搜尋
@@ -772,6 +849,7 @@ async function doSearch() {
     // 舊搜尋標記清除
     if (searchMarker) map.removeLayer(searchMarker);
     clearNearbyHighlights();
+    clearUserLocation();
 
     searchMarker = L.circleMarker([lat, lng], {
       radius: 10,
@@ -799,6 +877,7 @@ initAutocomplete(document.getElementById('search-input'), {
     closeInfo();
     if (searchMarker) map.removeLayer(searchMarker);
     clearNearbyHighlights();
+    clearUserLocation();
     searchMarker = L.circleMarker([lat, lng], {
       radius: 10, fillColor: '#2980b9', color: '#fff', weight: 3, fillOpacity: 1,
     }).addTo(map).bindPopup(`📍 ${address}`).openPopup();
@@ -879,22 +958,111 @@ function closeNearby() {
 }
 
 // ═══════════════════════════════════════════════
-//  我的位置
+//  我的位置（即時追蹤）
 // ═══════════════════════════════════════════════
-function locateMe() {
-  showStatus('定位中…', 0);
-  map.locate({ setView: true, maxZoom: 17 });
-  map.once('locationfound', e => {
-    if (searchMarker) map.removeLayer(searchMarker);
-    clearNearbyHighlights();
-    searchMarker = L.circleMarker(e.latlng, {
-      radius: 10, fillColor: '#2980b9', color: '#fff', weight: 3, fillOpacity: 1,
-    }).addTo(map).bindPopup('📍 我的位置').openPopup();
-    showNearby(e.latlng.lat, e.latlng.lng);
-    showStatus(`已定位，顯示附近 ${nearbyCount} 支消防栓`, 3000);
-  });
-  map.once('locationerror', () => showStatus('無法取得位置', 3000));
+function stopWatch() {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
 }
+
+function clearUserLocation() {
+  stopWatch();
+  if (userDot)      { map.removeLayer(userDot);      userDot = null; }
+  if (userPulse)    { map.removeLayer(userPulse);     userPulse = null; }
+  if (userAccuracy) { map.removeLayer(userAccuracy);  userAccuracy = null; }
+  userLatLng = null;
+}
+
+function locateMe() {
+  if (!navigator.geolocation) {
+    showStatus('此瀏覽器不支援定位功能', 3000);
+    return;
+  }
+
+  // 已在追蹤中：直接飛到目前位置
+  if (watchId !== null && userLatLng) {
+    map.flyTo(userLatLng, Math.max(map.getZoom(), 17), { duration: 0.8 });
+    showStatus('已置中到目前位置', 2000);
+    return;
+  }
+
+  showStatus('定位中…', 0);
+  let firstFix = true;
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+      userLatLng = L.latLng(lat, lng);
+
+      // 藍色實心圓點
+      if (!userDot) {
+        userDot = L.circleMarker(userLatLng, {
+          radius: 8,
+          fillColor: '#4285f4',
+          color: '#fff',
+          weight: 3,
+          fillOpacity: 1,
+          interactive: false,
+        }).addTo(map);
+      } else {
+        userDot.setLatLng(userLatLng);
+      }
+
+      // 呼吸光圈
+      if (!userPulse) {
+        const pulseIcon = L.divIcon({
+          className: '',
+          html: '<div class="user-dot-pulse"></div>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+        userPulse = L.marker(userLatLng, { icon: pulseIcon, interactive: false, zIndexOffset: -1 }).addTo(map);
+      } else {
+        userPulse.setLatLng(userLatLng);
+      }
+
+      // GPS 精度半徑圈
+      if (!userAccuracy) {
+        userAccuracy = L.circle(userLatLng, {
+          radius: accuracy,
+          color: '#4285f4',
+          fillColor: '#4285f4',
+          fillOpacity: 0.08,
+          weight: 1,
+          interactive: false,
+        }).addTo(map);
+      } else {
+        userAccuracy.setLatLng(userLatLng);
+        userAccuracy.setRadius(accuracy);
+      }
+
+      // 首次定位：飛到位置並顯示附近消防栓
+      if (firstFix) {
+        firstFix = false;
+        map.flyTo(userLatLng, 17, { duration: 1.0 });
+        showNearby(lat, lng);
+        showStatus(`已定位，顯示附近 ${nearbyCount} 支消防栓`, 3000);
+      }
+    },
+    (err) => {
+      const msgs = {
+        1: '定位權限被拒絕，請至設定開啟位置權限',
+        2: '無法取得位置訊號，請移至空曠處再試',
+        3: '定位逾時，請確認 GPS 已開啟',
+      };
+      showStatus(msgs[err.code] || '定位失敗', 4000);
+      stopWatch();
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+}
+
+// 頁面隱藏時暫停追蹤以節省電量
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopWatch();
+});
 
 // ═══════════════════════════════════════════════
 //  切換附近數量

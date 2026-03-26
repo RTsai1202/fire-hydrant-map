@@ -170,3 +170,9 @@
 #autocomplete-list::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
 }
+
+@media (max-width: 768px) {
+  #autocomplete-list {
+    max-height: min(240px, 40dvh);
+  }
+}
