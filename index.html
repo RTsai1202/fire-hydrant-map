@@ -106,6 +106,21 @@
 
     #search-btn:hover { background: #c0392b; }
 
+    #btn-clear-search {
+      background: none;
+      border: none;
+      color: #999;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 8px;
+      min-width: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #btn-clear-search:hover { color: #e74c3c; }
+
     #autocomplete-list {
       position: absolute;
       top: calc(100% + 4px);
@@ -169,24 +184,39 @@
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    /* ── 附近消防栓面板（右上角浮動） ───────────── */
+    /* ── 附近消防栓面板（底部抽屜） ─────────────── */
     #nearby-panel {
       position: fixed;
-      top: 12px;
-      right: 12px;
-      width: 260px;
+      bottom: 0;
+      left: 0;
+      right: 0;
       background: rgba(255, 255, 255, 0.97);
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
       z-index: 700;
-      display: none;
-      max-height: calc(100dvh - 100px);
+      max-height: 55dvh;
       overflow: hidden;
       flex-direction: column;
       backdrop-filter: blur(12px);
+      transform: translateY(100%);
+      transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      padding-bottom: env(safe-area-inset-bottom);
     }
 
-    #nearby-panel.open { display: flex; }
+    #nearby-panel.open {
+      transform: translateY(0);
+    }
+
+    #nearby-drag {
+      width: 40px;
+      height: 4px;
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 2px;
+      margin: 10px auto 6px;
+      flex-shrink: 0;
+      cursor: grab;
+    }
 
     #nearby-header {
       padding: 12px 14px 10px;
@@ -361,8 +391,9 @@
 
     #info-nav {
       display: flex;
-      gap: 8px;
-      margin: 14px 16px 0;
+      gap: 10px;
+      padding: 10px 16px 12px;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
     }
 
     .nav-btn {
@@ -494,6 +525,16 @@
       pointer-events: none;
     }
 
+    /* ── 搜尋火焰標記 ────────────────────────────── */
+    .search-fire-marker {
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    }
+
     /* ── 使用者即時定位藍點 ──────────────────────── */
     @keyframes user-dot-pulse {
       0%   { transform: scale(1);   opacity: 0.5; }
@@ -515,24 +556,13 @@
         width: calc(100vw - 24px);
       }
 
-      #nearby-panel {
-        top: auto;
-        right: 0;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        border-radius: 16px 16px 0 0;
-        max-height: 50dvh;
-        padding-bottom: env(safe-area-inset-bottom);
-      }
-
       #controls {
         right: 12px;
         bottom: calc(90px + env(safe-area-inset-bottom));
       }
 
       #controls.panel-open {
-        bottom: calc(65dvh + 20px + env(safe-area-inset-bottom));
+        bottom: calc(55dvh + 20px + env(safe-area-inset-bottom));
       }
 
       #legend {
@@ -563,6 +593,7 @@
   <div id="search-card-body">
     <div id="search-wrap">
       <input id="search-input" type="text" placeholder="輸入地址，查詢附近消防栓…" autocomplete="off" />
+      <button id="btn-clear-search" onclick="clearSearch()" title="清除搜尋" style="display:none">✕</button>
       <button id="search-btn" onclick="doSearch()" title="搜尋">🔍</button>
     </div>
     <div id="autocomplete-list"></div>
@@ -574,6 +605,7 @@
 
 <!-- 附近消防栓清單（右上角浮動） -->
 <div id="nearby-panel">
+  <div id="nearby-drag"></div>
   <div id="nearby-header">
     <h3 id="nearby-title">附近消防栓</h3>
     <button class="panel-close" onclick="closeNearby()">✕</button>
@@ -588,17 +620,16 @@
     <div id="info-title"></div>
     <button class="panel-close" onclick="closeInfo()">✕</button>
   </div>
-  <div id="info-body"></div>
   <div id="info-nav">
     <a id="info-nav-google" class="nav-btn nav-btn-google" href="#" target="_blank">🗺 Google Maps 導航</a>
     <a id="info-nav-apple"  class="nav-btn nav-btn-apple"  href="#" target="_blank">🍎 Apple Maps 導航</a>
   </div>
+  <div id="info-body"></div>
 </div>
 
 <!-- 右下控制 -->
 <div id="controls">
   <button class="ctrl-btn" id="btn-locate" onclick="locateMe()" title="我的位置">📍</button>
-  <button class="ctrl-btn" id="btn-count"  onclick="cycleCount()" title="附近顯示數量">5</button>
   <button class="ctrl-btn" id="btn-all"    onclick="toggleAll()"  title="顯示/隱藏全部">👁</button>
 </div>
 
@@ -607,7 +638,7 @@
   <div class="leg"><img src="img/hydrant-above.svg" style="width:16px;height:22px;object-fit:contain">地上式</div>
   <div class="leg"><img src="img/hydrant-below.svg" style="width:16px;height:16px;object-fit:contain">地下式</div>
   <div class="leg"><img src="img/hydrant-above-highlight.svg" style="width:16px;height:22px;object-fit:contain">最近幾支</div>
-  <div class="leg"><div class="dot" style="background:#2980b9"></div>搜尋位置</div>
+  <div class="leg"><span style="font-size:16px">🔥</span>搜尋位置</div>
 </div>
 
 <div id="sync-info"></div>
@@ -622,8 +653,6 @@
 const DATA_URL    = 'data/hydrants.geojson';
 const MAP_CENTER  = [24.086634809984165, 120.69584520999999];
 const MAP_ZOOM    = 14;
-const NEARBY_OPTIONS = [3, 5, 10];
-
 // Google Places API (New) Key
 // 空字串 = 不啟用，自動使用免費的 Photon/Nominatim 方案
 // 設定方式：Google Cloud Console → Places API (New) → 建立 API Key
@@ -632,8 +661,7 @@ const NEARBY_OPTIONS = [3, 5, 10];
 //   ③ 設定每日 Quota: 1000 次（Quotas & System Limits）
 const GOOGLE_PLACES_API_KEY = 'AIzaSyCgrM36BTQ7Xll-vRHdw6H_ZUTzmzf2rHg';
 
-let nearbyCountIdx = 1;
-let nearbyCount    = NEARBY_OPTIONS[nearbyCountIdx];
+let nearbyCount = 5;
 
 // ═══════════════════════════════════════════════
 //  地圖初始化
@@ -767,10 +795,9 @@ function showInfo(feature, latlng) {
 
   document.getElementById('info-panel').classList.add('open');
   document.getElementById('controls').classList.add('panel-open');
-  // 手機：info-panel 開啟時收起 nearby-panel 避免重疊
-  if (window.innerWidth <= 768) {
-    document.getElementById('nearby-panel').classList.remove('open');
-  }
+  // info-panel 開啟時收起 nearby-panel 避免重疊
+  document.getElementById('nearby-panel').style.transform = 'translateY(100%)';
+  document.getElementById('nearby-panel').classList.remove('open');
   map.panTo(latlng);
 }
 
@@ -783,38 +810,42 @@ function closeInfo() {
 
 map.on('click', closeInfo);
 
-// ── info-panel 拖曳關閉（向下滑超過 80px 則關閉） ──
-(function initInfoDrag() {
-  const panel = document.getElementById('info-panel');
-  const drag  = document.getElementById('info-drag');
+// ── 面板拖曳關閉（向下滑超過 80px 則關閉） ──────
+function initPanelDrag(panelEl, dragEl, closeFn) {
   let startY = 0, currentY = 0, dragging = false;
-
-  drag.addEventListener('touchstart', (e) => {
-    dragging = true;
+  dragEl.addEventListener('touchstart', e => {
     startY = e.touches[0].clientY;
     currentY = 0;
-    panel.style.transition = 'none';
+    dragging = true;
+    panelEl.style.transition = 'none';
   }, { passive: true });
-
-  drag.addEventListener('touchmove', (e) => {
+  dragEl.addEventListener('touchmove', e => {
     if (!dragging) return;
     currentY = e.touches[0].clientY - startY;
-    if (currentY < 0) currentY = 0;
-    panel.style.transform = `translateY(${currentY}px)`;
+    if (currentY > 0) panelEl.style.transform = `translateY(${currentY}px)`;
   }, { passive: true });
-
-  drag.addEventListener('touchend', () => {
+  dragEl.addEventListener('touchend', () => {
     if (!dragging) return;
     dragging = false;
-    panel.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+    panelEl.style.transition = '';
     if (currentY > 80) {
-      closeInfo();
+      closeFn();
     } else {
-      panel.style.transform = 'translateY(0)';
+      panelEl.style.transform = '';
     }
-    currentY = 0;
   });
-})();
+}
+
+initPanelDrag(
+  document.getElementById('info-panel'),
+  document.getElementById('info-drag'),
+  closeInfo
+);
+initPanelDrag(
+  document.getElementById('nearby-panel'),
+  document.getElementById('nearby-drag'),
+  closeNearby
+);
 
 // ═══════════════════════════════════════════════
 //  地址搜尋
@@ -849,19 +880,22 @@ async function doSearch() {
     // 舊搜尋標記清除
     if (searchMarker) map.removeLayer(searchMarker);
     clearNearbyHighlights();
-    clearUserLocation();
 
-    searchMarker = L.circleMarker([lat, lng], {
-      radius: 10,
-      fillColor: '#2980b9',
-      color: '#fff',
-      weight: 3,
-      fillOpacity: 1,
-    }).addTo(map).bindPopup(`📍 ${label}`).openPopup();
+    const fireIcon = L.divIcon({
+      className: 'search-fire-marker',
+      html: '🔥',
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+    searchMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(map);
+    searchMarker.on('click', () => showNearby(lat, lng));
+    document.getElementById('btn-clear-search').style.display = 'flex';
 
     map.setView([lat, lng], 17);
     showNearby(lat, lng);
     showStatus(`顯示附近 ${nearbyCount} 支消防栓`, 3000);
+    // 儲存搜尋歷史
+    if (autocompleteAPI) autocompleteAPI.saveHistory({ text: label, lat, lng });
 
   } catch {
     showStatus('搜尋失敗，請稍後再試', 3000);
@@ -869,18 +903,33 @@ async function doSearch() {
 }
 
 // ── Autocomplete 初始化 ─────────────────────────
-initAutocomplete(document.getElementById('search-input'), {
+const autocompleteAPI = initAutocomplete(document.getElementById('search-input'), {
   minChars: 2,
   debounceMs: 350,
   maxResults: 8,
+  getLocation() {
+    if (typeof userLatLng !== 'undefined' && userLatLng) {
+      return { lat: userLatLng.lat, lng: userLatLng.lng };
+    }
+    if (typeof map !== 'undefined') {
+      const c = map.getCenter();
+      return { lat: c.lat, lng: c.lng };
+    }
+    return null;
+  },
   onSelect({ address, lat, lng, precision }) {
     closeInfo();
     if (searchMarker) map.removeLayer(searchMarker);
     clearNearbyHighlights();
-    clearUserLocation();
-    searchMarker = L.circleMarker([lat, lng], {
-      radius: 10, fillColor: '#2980b9', color: '#fff', weight: 3, fillOpacity: 1,
-    }).addTo(map).bindPopup(`📍 ${address}`).openPopup();
+    const fireIcon = L.divIcon({
+      className: 'search-fire-marker',
+      html: '🔥',
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+    searchMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(map);
+    searchMarker.on('click', () => showNearby(lat, lng));
+    document.getElementById('btn-clear-search').style.display = 'flex';
     // 根據搜尋精度決定縮放層級
     const zoomMap = { exact: 17, street: 16, district: 13, place: 16 };
     map.setView([lat, lng], zoomMap[precision] || 17);
@@ -891,6 +940,8 @@ initAutocomplete(document.getElementById('search-input'), {
       place:    '（地圖資料中的場所）',
     }[precision] || '';
     showStatus(`顯示附近 ${nearbyCount} 支消防栓${precisionNote}`, precisionNote ? 5000 : 3000);
+    // 儲存搜尋歷史
+    if (autocompleteAPI) autocompleteAPI.saveHistory({ text: address, lat, lng });
   },
 });
 
@@ -953,8 +1004,16 @@ function clearNearbyHighlights() {
 
 function closeNearby() {
   clearNearbyHighlights();
-  document.getElementById('nearby-panel').classList.remove('open');
+  const panel = document.getElementById('nearby-panel');
+  panel.classList.remove('open');
+  panel.style.transform = '';
+}
+
+function clearSearch() {
   if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+  document.getElementById('search-input').value = '';
+  document.getElementById('btn-clear-search').style.display = 'none';
+  closeNearby();
 }
 
 // ═══════════════════════════════════════════════
@@ -1064,15 +1123,17 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) stopWatch();
 });
 
-// ═══════════════════════════════════════════════
-//  切換附近數量
-// ═══════════════════════════════════════════════
+// Temporarily removed - count toggle button hidden
+/* ═══════════════════════════════════════════════
+   切換附近數量
+   ═══════════════════════════════════════════════
 function cycleCount() {
   nearbyCountIdx = (nearbyCountIdx + 1) % NEARBY_OPTIONS.length;
   nearbyCount = NEARBY_OPTIONS[nearbyCountIdx];
   document.getElementById('btn-count').textContent = nearbyCount;
   showStatus(`附近顯示 ${nearbyCount} 支`, 2000);
 }
+*/
 
 // ═══════════════════════════════════════════════
 //  顯示 / 隱藏全部標記

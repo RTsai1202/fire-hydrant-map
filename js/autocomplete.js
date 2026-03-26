@@ -26,6 +26,24 @@
  *   - 去掉多餘空白
  */
 
+// ── Search History ──────────────────────────
+const HISTORY_KEY = 'fire_hydrant_search_history';
+const HISTORY_MAX = 3;
+
+function getSearchHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch { return []; }
+}
+
+function saveSearchHistory(item) {
+  let history = getSearchHistory();
+  history = history.filter(h => h.text !== item.text);
+  history.unshift(item);
+  history = history.slice(0, HISTORY_MAX);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
 function initAutocomplete(inputEl, options) {
   const opts = Object.assign(
     { minChars: 2, debounceMs: 350, maxResults: 8 },
@@ -43,9 +61,9 @@ function initAutocomplete(inputEl, options) {
   const TW_BBOX = '119.9,21.9,122.1,25.4'; // min_lon,min_lat,max_lon,max_lat
   // Nominatim viewbox（台灣全島）：左下→右上
   const TW_VIEWBOX = '119.9,21.9,122.1,25.4'; // west,south,east,north
-  // 地圖中心偏置（臺中市中心，讓結果優先附近）
-  const BIAS_LAT = 24.148;
-  const BIAS_LON = 120.668;
+  // 地圖中心偏置預設值（臺中市中心，讓結果優先附近）
+  const DEFAULT_BIAS_LAT = 24.148;
+  const DEFAULT_BIAS_LON = 120.668;
 
   // ── 輸入正規化 ────────────────────────────────────────────
 
@@ -128,6 +146,8 @@ function initAutocomplete(inputEl, options) {
     const apiKey = getGoogleApiKey();
     if (!apiKey) return [];
 
+    const loc = (opts.getLocation && opts.getLocation()) || { lat: DEFAULT_BIAS_LAT, lng: DEFAULT_BIAS_LON };
+
     const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
       method: 'POST',
       signal,
@@ -142,7 +162,7 @@ function initAutocomplete(inputEl, options) {
         languageCode: 'zh-TW',
         locationBias: {
           circle: {
-            center: { latitude: BIAS_LAT, longitude: BIAS_LON },
+            center: { latitude: loc.lat, longitude: loc.lng },
             radius: 50000,
           },
         },
@@ -210,12 +230,13 @@ function initAutocomplete(inputEl, options) {
   // 回傳 GeoJSON，適合 autocomplete（部分輸入即可）
 
   async function fetchPhoton(query, signal) {
+    const loc = (opts.getLocation && opts.getLocation()) || { lat: DEFAULT_BIAS_LAT, lng: DEFAULT_BIAS_LON };
     const params = new URLSearchParams({
       q: query,
       limit: String(opts.maxResults),
       lang: 'zh',
-      lat: String(BIAS_LAT),
-      lon: String(BIAS_LON),
+      lat: String(loc.lat),
+      lon: String(loc.lng),
     });
 
     const url = `https://photon.komoot.io/api/?${params}`;
@@ -692,7 +713,50 @@ out center 6;
     }
   }
 
+  // ── 搜尋歷史渲染 ──────────────────────────────────────────
+
+  function renderHistoryItems(history) {
+    const list = ensureList();
+    list.innerHTML = '';
+    history.forEach((item) => {
+      const li = document.createElement('li');
+      li.className = 'ac-item ac-history-item';
+      li.setAttribute('role', 'option');
+      li.innerHTML = `<span class="ac-history-icon">🕐</span><span class="ac-history-text">${escapeHtml(item.text)}</span>`;
+
+      const selectHistory = () => {
+        inputEl.value = item.text;
+        destroyList();
+        if (typeof opts.onSelect === 'function') {
+          opts.onSelect({ address: item.text, lat: item.lat, lng: item.lng, precision: 'exact' });
+        }
+      };
+
+      li.addEventListener('mousedown', e => {
+        e.preventDefault();
+        selectHistory();
+      });
+      // 行動裝置觸控支援
+      li.addEventListener('touchend', e => {
+        e.preventDefault();
+        selectHistory();
+      });
+
+      list.appendChild(li);
+    });
+    list.style.display = 'block';
+  }
+
   // ── 事件綁定 ──────────────────────────────────────────────
+
+  inputEl.addEventListener('focus', () => {
+    if (inputEl.value.trim() === '') {
+      const history = getSearchHistory();
+      if (history.length > 0) {
+        renderHistoryItems(history);
+      }
+    }
+  });
 
   inputEl.addEventListener('input', () => {
     const val = inputEl.value.trim();
@@ -741,6 +805,9 @@ out center 6;
   inputEl.addEventListener('change', () => {
     if (inputEl.value.trim() === '') destroyList();
   });
+
+  // 回傳 API 供外部呼叫（儲存搜尋歷史）
+  return { saveHistory: saveSearchHistory };
 }
 
 // 支援 CommonJS（Node.js 測試環境）
