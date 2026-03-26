@@ -416,6 +416,98 @@
       font-weight: 500;
     }
 
+    /* ── 搜尋地點資訊面板 ─────────────────────────── */
+    #search-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.97);
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+      z-index: 750;
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: blur(12px);
+      transform: translateY(100%);
+      transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+      padding-bottom: env(safe-area-inset-bottom);
+      overflow: hidden;
+    }
+
+    #search-panel.open { transform: translateY(0); }
+
+    #search-panel-drag {
+      width: 100%;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #search-panel-drag::before {
+      content: '';
+      display: block;
+      width: 40px;
+      height: 4px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 2px;
+    }
+
+    #search-panel-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 4px 16px 10px;
+    }
+
+    #search-panel-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a1a2e;
+      border-left: 4px solid #e67e22;
+      padding-left: 10px;
+      line-height: 1.35;
+    }
+
+    #search-panel-nav {
+      display: flex;
+      gap: 10px;
+      padding: 0 16px 12px;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+
+    #search-panel-body {
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.6;
+    }
+
+    #search-panel-footer {
+      padding: 10px 16px 14px;
+    }
+
+    .nearby-trigger-btn {
+      width: 100%;
+      padding: 13px;
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      min-height: 50px;
+      transition: opacity 0.2s;
+    }
+
+    .nearby-trigger-btn:active { opacity: 0.82; }
+
     #info-nav {
       display: flex;
       gap: 10px;
@@ -640,6 +732,25 @@
   <div id="nearby-list"></div>
 </div>
 
+<!-- 搜尋地點資訊面板（底部抽屜） -->
+<div id="search-panel">
+  <div id="search-panel-drag"></div>
+  <div id="search-panel-top">
+    <div id="search-panel-title"></div>
+    <button class="panel-close" onclick="closeSearchPanel()">✕</button>
+  </div>
+  <div id="search-panel-nav">
+    <a id="sp-nav-google" class="nav-btn nav-btn-google" href="#" target="_blank">🗺 Google Maps 導航</a>
+    <a id="sp-nav-apple"  class="nav-btn nav-btn-apple"  href="#" target="_blank">🍎 Apple Maps 導航</a>
+  </div>
+  <div id="search-panel-body"></div>
+  <div id="search-panel-footer">
+    <button class="nearby-trigger-btn" onclick="closeSearchPanel(); showNearby(searchInfo.lat, searchInfo.lng);">
+      🚒 查看附近消防栓
+    </button>
+  </div>
+</div>
+
 <!-- 消防栓詳細資訊（底部抽屜） -->
 <div id="info-panel">
   <div id="info-drag"></div>
@@ -740,6 +851,7 @@ function typeToIcon(type, highlight = false) {
 let allPoints   = [];  // [{ feature, latlng, marker }]
 let nearbyItems = [];
 let searchMarker = null;
+let searchInfo   = null; // { name, address, lat, lng }
 // ── 即時定位圖層（與 searchMarker 獨立） ─────────
 let userDot      = null;   // 藍色實心圓點
 let userPulse    = null;   // 呼吸光圈（L.divIcon）
@@ -822,9 +934,10 @@ function showInfo(feature, latlng) {
 
   document.getElementById('info-panel').classList.add('open');
   document.getElementById('controls').classList.add('panel-open');
-  // info-panel 開啟時收起 nearby-panel 避免重疊
+  // info-panel 開啟時收起其他面板避免重疊
   document.getElementById('nearby-panel').style.transform = 'translateY(100%)';
   document.getElementById('nearby-panel').classList.remove('open');
+  closeSearchPanel();
   map.panTo(latlng);
 }
 
@@ -873,6 +986,11 @@ initPanelDrag(
   document.getElementById('nearby-drag'),
   closeNearby
 );
+initPanelDrag(
+  document.getElementById('search-panel'),
+  document.getElementById('search-panel-drag'),
+  closeSearchPanel
+);
 
 // ═══════════════════════════════════════════════
 //  地址搜尋
@@ -902,12 +1020,17 @@ async function doSearch() {
 
     const lat = parseFloat(data[0].lat);
     const lng = parseFloat(data[0].lon);
-    const label = data[0].display_name.split(',').slice(0, 3).join('');
+    const parts = data[0].display_name.split(',');
+    const name  = parts[0].trim();
+    const label = parts.slice(0, 3).join('');
+    const fullAddr = parts.slice(1, 4).map(s => s.trim()).filter(Boolean).join(' ');
 
     // 舊搜尋標記清除
     if (searchMarker) map.removeLayer(searchMarker);
     clearNearbyHighlights();
+    closeSearchPanel();
 
+    const _si = { name, address: fullAddr || name, lat, lng };
     const fireIcon = L.divIcon({
       className: 'search-fire-marker',
       html: '🔥',
@@ -915,7 +1038,7 @@ async function doSearch() {
       iconAnchor: [18, 18],
     });
     searchMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(map);
-    searchMarker.on('click', () => showNearby(lat, lng));
+    searchMarker.on('click', () => showSearchPanel(_si));
     document.getElementById('btn-clear-search').style.display = 'flex';
 
     map.setView([lat, lng], 17);
@@ -945,10 +1068,18 @@ const autocompleteAPI = initAutocomplete(document.getElementById('search-input')
     }
     return null;
   },
-  onSelect({ address, lat, lng, precision }) {
+  onSelect({ address, lat, lng, precision, subtext }) {
     closeInfo();
+    closeSearchPanel();
     if (searchMarker) map.removeLayer(searchMarker);
     clearNearbyHighlights();
+    // 場所搜尋：address 為場所名稱，subtext 為地址；其餘 address 即地址
+    const isPlace = precision === 'place';
+    const _si = {
+      name:    address,
+      address: subtext || (isPlace ? '' : address),
+      lat, lng,
+    };
     const fireIcon = L.divIcon({
       className: 'search-fire-marker',
       html: '🔥',
@@ -956,7 +1087,7 @@ const autocompleteAPI = initAutocomplete(document.getElementById('search-input')
       iconAnchor: [18, 18],
     });
     searchMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(map);
-    searchMarker.on('click', () => showNearby(lat, lng));
+    searchMarker.on('click', () => showSearchPanel(_si));
     document.getElementById('btn-clear-search').style.display = 'flex';
     // 根據搜尋精度決定縮放層級
     const zoomMap = { exact: 17, street: 16, district: 13, place: 16 };
@@ -1045,11 +1176,42 @@ function closeNearby() {
   panel.style.transform = '';
 }
 
+function showSearchPanel(info) {
+  closeNearby();
+  searchInfo = info;
+  document.getElementById('search-panel-title').textContent = info.name;
+  // 地址（與名稱不同才顯示）
+  const bodyEl = document.getElementById('search-panel-body');
+  if (info.address && info.address !== info.name) {
+    bodyEl.textContent = info.address;
+    bodyEl.style.display = '';
+  } else {
+    bodyEl.style.display = 'none';
+  }
+  // 導航連結
+  const dest = `${info.lat},${info.lng}`;
+  document.getElementById('sp-nav-google').href =
+    `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+  document.getElementById('sp-nav-apple').href =
+    `https://maps.apple.com/?daddr=${dest}&dirflg=d`;
+  const panel = document.getElementById('search-panel');
+  panel.style.transform = '';
+  panel.classList.add('open');
+}
+
+function closeSearchPanel() {
+  const panel = document.getElementById('search-panel');
+  panel.classList.remove('open');
+  panel.style.transform = '';
+}
+
 function clearSearch() {
   if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
   document.getElementById('search-input').value = '';
   document.getElementById('btn-clear-search').style.display = 'none';
   closeNearby();
+  closeSearchPanel();
+  searchInfo = null;
 }
 
 // ═══════════════════════════════════════════════
