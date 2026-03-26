@@ -212,10 +212,30 @@
       width: 40px;
       height: 4px;
       background: rgba(0, 0, 0, 0.15);
+      background-clip: content-box;
       border-radius: 2px;
-      margin: 10px auto 6px;
+      margin: 0 auto;
+      padding: 14px 0;
       flex-shrink: 0;
       cursor: grab;
+      touch-action: none;
+    }
+
+    .nearby-type-icon {
+      width: 18px;
+      height: 18px;
+      vertical-align: middle;
+      margin-right: 5px;
+      flex-shrink: 0;
+    }
+
+    .nearby-type-label {
+      font-size: 11px;
+      color: #777;
+      background: rgba(0,0,0,0.06);
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin-right: 6px;
     }
 
     #nearby-header {
@@ -893,6 +913,7 @@ async function doSearch() {
 
     map.setView([lat, lng], 17);
     showNearby(lat, lng);
+    map.panBy([0, Math.round(window.innerHeight * 0.27)]);
     showStatus(`顯示附近 ${nearbyCount} 支消防栓`, 3000);
     // 儲存搜尋歷史
     if (autocompleteAPI) autocompleteAPI.saveHistory({ text: label, lat, lng });
@@ -934,6 +955,7 @@ const autocompleteAPI = initAutocomplete(document.getElementById('search-input')
     const zoomMap = { exact: 17, street: 16, district: 13, place: 16 };
     map.setView([lat, lng], zoomMap[precision] || 17);
     showNearby(lat, lng);
+    map.panBy([0, Math.round(window.innerHeight * 0.27)]);
     const precisionNote = {
       street:   '（找不到門牌，已顯示街道位置）',
       district: '（找不到地址，已顯示區域位置）',
@@ -975,10 +997,16 @@ function showNearby(lat, lng) {
       : `${(item.dist/1000).toFixed(1)} 公里`;
     const lat = item.latlng.lat, lng = item.latlng.lng;
     const distClass = item.dist < 100 ? 'dist-near' : item.dist < 300 ? 'dist-mid' : 'dist-far';
+    const typeLabel = item.type === 'below' ? '地下式' : '地上式';
     return `
       <div class="nearby-item ${distClass}" onclick="flyTo(${i})">
-        <div class="nearby-name">${i+1}. ${name}</div>
-        <div class="nearby-meta">📏 ${dm}</div>
+        <div class="nearby-name">
+          <img src="img/hydrant-${item.type}.svg" class="nearby-type-icon" alt="${typeLabel}">
+          ${i+1}. ${name}
+        </div>
+        <div class="nearby-meta">
+          <span class="nearby-type-label">${typeLabel}</span>📏 ${dm}
+        </div>
         <a class="nearby-nav"
            href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving"
            target="_blank"
@@ -995,6 +1023,7 @@ function flyTo(idx) {
   if (!item) return;
   map.setView(item.latlng, 18);
   showInfo(item.feature, item.latlng);
+  map.panBy([0, Math.round(window.innerHeight * 0.15)]);
 }
 
 function clearNearbyHighlights() {
