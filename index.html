@@ -209,16 +209,23 @@
     }
 
     #nearby-drag {
-      width: 40px;
-      height: 4px;
-      background: rgba(0, 0, 0, 0.15);
-      background-clip: content-box;
-      border-radius: 2px;
-      margin: 0 auto;
-      padding: 14px 0;
+      width: 100%;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       flex-shrink: 0;
       cursor: grab;
       touch-action: none;
+    }
+
+    #nearby-drag::before {
+      content: '';
+      display: block;
+      width: 40px;
+      height: 4px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 2px;
     }
 
     .nearby-type-icon {
@@ -626,9 +633,9 @@
 <!-- 附近消防栓清單（右上角浮動） -->
 <div id="nearby-panel">
   <div id="nearby-drag"></div>
-  <div id="nearby-header">
+  <div id="nearby-header" onclick="closeNearby()" style="cursor:pointer" title="點擊收合">
     <h3 id="nearby-title">附近消防栓</h3>
-    <button class="panel-close" onclick="closeNearby()">✕</button>
+    <button class="panel-close" onclick="event.stopPropagation();closeNearby()">✕</button>
   </div>
   <div id="nearby-list"></div>
 </div>
