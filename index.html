@@ -1064,6 +1064,7 @@ async function doSearch() {
     closeSearchPanel();
 
     const _si = { name, address: fullAddr || name, lat, lng };
+    searchInfo = _si;
     const fireIcon = L.divIcon({
       className: 'search-fire-marker',
       html: '🔥',
@@ -1113,6 +1114,7 @@ const autocompleteAPI = initAutocomplete(document.getElementById('search-input')
       address: subtext || (isPlace ? '' : address),
       lat, lng,
     };
+    searchInfo = _si;
     const fireIcon = L.divIcon({
       className: 'search-fire-marker',
       html: '🔥',
