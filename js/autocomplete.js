@@ -659,7 +659,8 @@ out center 6;
         const details = await fetchGooglePlaceDetails(item._placeId);
         if (details && details.lat != null && typeof opts.onSelect === 'function') {
           opts.onSelect({
-            address: details.address || item.address,
+            address: item._mainText || item.address,
+            subtext: details.address || item._secondaryText || '',
             lat: details.lat,
             lng: details.lng,
             precision: 'exact',
@@ -678,6 +679,7 @@ out center 6;
     if (typeof opts.onSelect === 'function') {
       opts.onSelect({
         address: item.address,
+        subtext: item._secondaryText || '',
         lat: item.lat,
         lng: item.lng,
         precision: item.precision || 'exact',
