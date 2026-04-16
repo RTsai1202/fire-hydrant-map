@@ -1214,10 +1214,17 @@ function closeNearby() {
 function copyNearbyInfo() {
   if (!nearbyItems.length) return;
 
-  // 搜尋地址：優先使用 searchInfo
-  const searchAddr = searchInfo
-    ? (searchInfo.name || searchInfo.address || '目前位置')
-    : '目前定位';
+  // 搜尋地址：名稱＋地址組合
+  let searchAddr = '目前定位';
+  if (searchInfo) {
+    const nm = searchInfo.name || '';
+    const ad = searchInfo.address || '';
+    if (nm && ad && nm !== ad) {
+      searchAddr = `${nm}（${ad}）`;
+    } else {
+      searchAddr = nm || ad || '目前位置';
+    }
+  }
 
   let text = `🔥 火警地點：「${searchAddr}」\n`;
   if (searchInfo) {
