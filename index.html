@@ -1031,6 +1031,8 @@ initPanelDrag(
 document.getElementById('search-input')
   .addEventListener('keydown', e => {
     if (e.key === 'Enter') {
+      // 中文選字中（IME composing）不觸發搜尋
+      if (e.isComposing || e.keyCode === 229) return;
       // autocomplete 下拉展開中由 autocomplete.js 處理，避免雙重觸發
       const acList = document.getElementById('autocomplete-list');
       if (acList && acList.style.display === 'block') return;

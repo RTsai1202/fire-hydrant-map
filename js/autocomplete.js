@@ -771,6 +771,8 @@ out center 6;
   });
 
   inputEl.addEventListener('keydown', (e) => {
+    // 中文選字中（IME composing）不攔截
+    if (e.isComposing || e.keyCode === 229) return;
     const list = ensureList();
     const visible = list.style.display === 'block';
     if (!visible) return;
