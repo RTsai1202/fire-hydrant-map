@@ -1215,18 +1215,19 @@ function copyNearbyInfo() {
   if (!nearbyItems.length) return;
 
   // 搜尋地址：名稱＋地址組合
+  const stripPrefix = s => s.replace(/^\d{3,}臺灣/, '').replace(/^\d{3,}台灣/, '');
   let searchAddr = '目前定位';
   if (searchInfo) {
-    const nm = searchInfo.name || '';
-    const ad = searchInfo.address || '';
+    const nm = (searchInfo.name || '').trim();
+    const ad = stripPrefix(searchInfo.address || '').trim();
     if (nm && ad && nm !== ad) {
       searchAddr = `${nm}（${ad}）`;
     } else {
-      searchAddr = nm || ad || '目前位置';
+      searchAddr = stripPrefix(nm) || ad || '目前位置';
     }
   }
 
-  let text = `🔥 火警地點：「${searchAddr}」\n`;
+  let text = `🔥 火警地點：${searchAddr}\n`;
   if (searchInfo) {
     const fireUrl = `https://www.google.com/maps/dir/?api=1&destination=${searchInfo.lat},${searchInfo.lng}&travelmode=driving`;
     text += `Google Maps：\n${fireUrl}\n`;
@@ -1245,7 +1246,7 @@ function copyNearbyInfo() {
     const gmapUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
 
     text += `\n${i + 1}.\n`;
-    text += `「${typeLabel}」\n`;
+    text += `${typeLabel}\n`;
     text += `距離：${dm}\n`;
     if (customId) text += `消防栓編號：${customId}\n`;
     text += `Google Maps：\n${gmapUrl}\n`;
