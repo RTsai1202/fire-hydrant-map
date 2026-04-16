@@ -261,6 +261,36 @@
       letter-spacing: 0.3px;
     }
 
+    #nearby-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .copy-btn {
+      background: rgba(192, 57, 43, 0.1);
+      border: 1px solid rgba(192, 57, 43, 0.2);
+      color: #c0392b;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover { background: rgba(192, 57, 43, 0.18); }
+    .copy-btn:active { transform: scale(0.95); }
+    .copy-btn.copied {
+      background: rgba(39, 174, 96, 0.15);
+      border-color: rgba(39, 174, 96, 0.3);
+      color: #27ae60;
+    }
+
     .panel-close {
       background: rgba(0, 0, 0, 0.06);
       border: none;
@@ -726,7 +756,10 @@
 <div id="nearby-panel">
   <div id="nearby-drag"></div>
   <div id="nearby-header" onclick="closeNearby()" style="cursor:pointer" title="點擊收合">
-    <h3 id="nearby-title">附近消防栓</h3>
+    <div id="nearby-header-left">
+      <h3 id="nearby-title">附近消防栓</h3>
+      <button class="copy-btn" id="btn-copy-nearby" onclick="event.stopPropagation();copyNearbyInfo()" title="複製資訊">📋 複製</button>
+    </div>
     <button class="panel-close" onclick="event.stopPropagation();closeNearby()">✕</button>
   </div>
   <div id="nearby-list"></div>
@@ -1174,6 +1207,48 @@ function closeNearby() {
   const panel = document.getElementById('nearby-panel');
   panel.classList.remove('open');
   panel.style.transform = '';
+}
+
+function copyNearbyInfo() {
+  if (!nearbyItems.length) return;
+
+  // 搜尋地址：優先使用 searchInfo，否則用「目前定位」
+  const searchAddr = searchInfo
+    ? (searchInfo.address || searchInfo.name || '目前位置')
+    : '目前定位';
+
+  let text = `🔥 火警地點：「${searchAddr}」\n\n附近消防栓資訊\n`;
+
+  nearbyItems.forEach((item, i) => {
+    const p = item.feature.properties || {};
+    const typeLabel = item.type === 'below' ? '地下式' : '地上式';
+    const dm = item.dist < 1000
+      ? `${Math.round(item.dist)} 公尺`
+      : `${(item.dist / 1000).toFixed(1)} 公里`;
+    const hydrantId = p['消防栓編號'] || p.name || '';
+    const lat = item.latlng.lat;
+    const lng = item.latlng.lng;
+    const gmapUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+
+    text += `\n${i + 1}.\n`;
+    text += `「${typeLabel}」\n`;
+    text += `距離：${dm}\n`;
+    text += `消防栓編號：${hydrantId}\n`;
+    text += `Google Maps：${gmapUrl}\n`;
+  });
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('btn-copy-nearby');
+    btn.classList.add('copied');
+    btn.innerHTML = '✅ 已複製';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '📋 複製';
+    }, 2000);
+    showStatus('已複製附近消防栓資訊', 2000);
+  }).catch(() => {
+    showStatus('複製失敗，請手動複製', 3000);
+  });
 }
 
 function showSearchPanel(info) {
