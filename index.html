@@ -1212,12 +1212,17 @@ function closeNearby() {
 function copyNearbyInfo() {
   if (!nearbyItems.length) return;
 
-  // 搜尋地址：優先使用 searchInfo，否則用「目前定位」
+  // 搜尋地址：優先使用 searchInfo
   const searchAddr = searchInfo
-    ? (searchInfo.address || searchInfo.name || '目前位置')
+    ? (searchInfo.name || searchInfo.address || '目前位置')
     : '目前定位';
 
-  let text = `🔥 火警地點：「${searchAddr}」\n\n附近消防栓資訊\n`;
+  let text = `🔥 火警地點：「${searchAddr}」\n`;
+  if (searchInfo) {
+    const fireUrl = `https://www.google.com/maps/dir/?api=1&destination=${searchInfo.lat},${searchInfo.lng}&travelmode=driving`;
+    text += `Google Maps：\n${fireUrl}\n`;
+  }
+  text += `\n附近消防栓資訊\n`;
 
   nearbyItems.forEach((item, i) => {
     const p = item.feature.properties || {};
@@ -1225,7 +1230,7 @@ function copyNearbyInfo() {
     const dm = item.dist < 1000
       ? `${Math.round(item.dist)} 公尺`
       : `${(item.dist / 1000).toFixed(1)} 公里`;
-    const hydrantId = p['消防栓編號'] || p.name || '';
+    const customId = p['自訂編號'] ? String(p['自訂編號']).trim() : '';
     const lat = item.latlng.lat;
     const lng = item.latlng.lng;
     const gmapUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
@@ -1233,7 +1238,7 @@ function copyNearbyInfo() {
     text += `\n${i + 1}.\n`;
     text += `「${typeLabel}」\n`;
     text += `距離：${dm}\n`;
-    text += `消防栓編號：${hydrantId}\n`;
+    if (customId) text += `消防栓編號：${customId}\n`;
     text += `Google Maps：\n${gmapUrl}\n`;
   });
 
