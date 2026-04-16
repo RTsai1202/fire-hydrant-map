@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>消防栓位置地圖 — 車籠埔分隊</title>
+  <title>臺中市 消防栓位置地圖</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
@@ -737,7 +737,7 @@
 <div id="search-card">
   <div id="search-card-header">
     <span class="card-icon">🚒</span>
-    <span class="card-label">車籠埔分隊 消防栓地圖</span>
+    <span class="card-label">臺中市 消防栓地圖</span>
   </div>
   <div id="search-card-body">
     <div id="search-wrap">
@@ -822,8 +822,8 @@
 //  設定
 // ═══════════════════════════════════════════════
 const DATA_URL    = 'data/hydrants.geojson';
-const MAP_CENTER  = [24.086634809984165, 120.69584520999999];
-const MAP_ZOOM    = 14;
+const MAP_CENTER  = [24.14, 120.70];
+const MAP_ZOOM    = 12;
 // Google Places API (New) Key
 // 空字串 = 不啟用，自動使用免費的 Photon/Nominatim 方案
 // 設定方式：Google Cloud Console → Places API (New) → 建立 API Key
@@ -942,7 +942,7 @@ fetch(DATA_URL)
 //  消防栓資訊面板
 // ═══════════════════════════════════════════════
 const SKIP_KEYS = new Set(['name', 'Name', 'description', 'styleUrl',
-  'styleHash', 'styleMapHash', 'stroke', 'fill', 'fill-opacity', 'stroke-width']);
+  'styleHash', 'styleMapHash', 'stroke', 'fill', 'fill-opacity', 'stroke-width', '_source']);
 
 function showInfo(feature, latlng) {
   const p = feature.properties || {};
