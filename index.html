@@ -1234,7 +1234,7 @@ function copyNearbyInfo() {
     text += `「${typeLabel}」\n`;
     text += `距離：${dm}\n`;
     text += `消防栓編號：${hydrantId}\n`;
-    text += `Google Maps：${gmapUrl}\n`;
+    text += `Google Maps：\n${gmapUrl}\n`;
   });
 
   navigator.clipboard.writeText(text).then(() => {
