@@ -1,14 +1,14 @@
 # AI 專案交接
 
-- 狀態：地圖配色修復已部署；安全修正已在本機驗證，待共享歷史清理批准
+- 狀態：安全修正已推送並驗證線上功能；GitHub 舊 SHA 快取清除待 Support 工單批准
 - 工具：codex
 - 目標：修復消防栓地圖，使用免費 CARTO 金鑰恢復 Voyager 原本配色。
 
 ## 線上版本
 
 - 網址：https://rtsai1202.github.io/fire-hydrant-map/
-- 功能提交：ca942db01de61d71578f5c73a772f5d0a69ae7fd
-- 成功部署：https://github.com/RTsai1202/fire-hydrant-map/actions/runs/38368514158
+- 功能提交：07007bca3b0746e0c41d23a76426aa91ecb529d5
+- 成功部署：https://github.com/RTsai1202/fire-hydrant-map/actions/runs/38376583192
 - GitHub Pages 已改用 GitHub Actions workflow 發布。
 
 ## 實作
@@ -40,11 +40,18 @@
 
 ## 安全修正與推送狀態（最新）
 
-- 前一輪掃描發現的原始碼金鑰與個資，目前版本已修復；共享 Git 歷史尚未改寫。
-- Google 新金鑰已存入部署 secret，只允許 rtsai1202.github.io 網站與 Places API (New)；原始碼保持空配置。
-- 新金鑰在網站來源的搜尋與詳情皆 HTTP 200，缺乏允許網站來源的請求 HTTP 403；舊金鑰待新部署驗證後停用。
-- 清除建檔／修改帳號各 4,051 個欄位，以及 19 筆說明中的帳號行；6,328 筆消防栓、全部 geometry、順序與業務資訊保持一致。
-- 同步與部署打包重用清理函式，避免下次同步或部署帶回帳號資料；原始 My Maps 來源未改動。
-- 6 個安全回歸測試、git diff --check、全 Git index 安全掃描及另一代理獨立審查通過。
-- 完整專案與 .git 已私下備份。main 既有 65 個提交、無其他遠端分支／tag／PR；歷史有 17 個含 Google key 的 HTML 版本、40 個非空含帳號的資料版本。
-- 待使用者明確批准：在隔離副本清理共享 main 歷史，驗證後僅用 force-with-lease 推送 main；不改其他分支或外部來源資料。
+- 使用者已明確批准 main 歷史清理與 force-with-lease；已完整備份，在隔離副本清理、驗證並推送，沒有其他分支、tag、PR 或 fork 受到影響。
+- 新 Google 金鑰只允許 rtsai1202.github.io 網站及 Places API (New)，由部署 secret 注入；舊金鑰已停用，實際請求回 API_KEY_INVALID。
+- 建檔／修改帳號各 4,051 個欄位，以及 19 筆說明的帳號行已移除；6,328 筆消防栓、全部 geometry、順序與其他業務資訊不變。
+- 同步與部署打包重用清理函式，避免下次帶回帳號資料；未修改外部 My Maps 來源。
+- main 可達的 100 個 blob、41 個 GeoJSON 版本均無舊 Google key 或個資樣式，主代理與獨立審查者核對通過；遠端重新 clone 再次通過。
+- 6 個安全回歸測試、全 Git index 掃描與獨立審查通過；部署 run 38376583192 success。
+- 公開資料回讀無帳號／手機樣式；實際 UI 搜尋車籠埔分隊、附近 5 支、詳細資訊與導航正常；CARTO zoom 18 的 12/12 圖磚載入。
+- 已刪除兩份含舊帳號資料的部署 artifact，保留最新清理後產物。
+- 私人完整備份保留於非同步、權限受限的位置，不提交、不部署。
+
+## 尚待 GitHub 平台處理
+
+- 實測舊 SHA 的 raw view 仍可讀到原始帳號資料；force push 不會立即清除 GitHub 的不可達物件與快取。
+- GitHub Support 清除工單已填好，僅含儲存庫、路徑、SHA，不附實際電話或金鑰；等待使用者批准對外送出。
+- 這是平台快取清除的剩餘範圍，不能宣稱 GitHub 上所有舊副本已永久消失。
