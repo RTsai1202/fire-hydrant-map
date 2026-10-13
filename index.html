@@ -817,6 +817,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="js/autocomplete.js"></script>
+<script src="js/basemap-config.js"></script>
 <script>
 // ═══════════════════════════════════════════════
 //  設定
@@ -843,10 +844,15 @@ const map = L.map('map', {
 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-// CARTO 未附 API key 時會回傳告示圖片，改用 OpenStreetMap 標準底圖。
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxNativeZoom: 19,
+// 金鑰由部署流程注入；未設定時保留可用的 OpenStreetMap 底圖。
+const cartoKey = (window.CARTO_BASEMAP_API_KEY || '').trim();
+const basemapUrl = cartoKey
+  ? `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(cartoKey)}`
+  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+L.tileLayer(basemapUrl, {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    + (cartoKey ? ' © <a href="https://carto.com/attributions">CARTO</a>' : ''),
+  maxNativeZoom: cartoKey ? 20 : 19,
   maxZoom: 20,
   updateWhenIdle: true,
 }).addTo(map);
