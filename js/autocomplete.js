@@ -118,7 +118,7 @@ function initAutocomplete(inputEl, options) {
   // ── Google Places API (New)（主力，需 API Key） ───────────
   // 使用 REST API，無需載入 Google Maps JS SDK
   // Session Token 機制：多次按鍵打包成 1 次計費
-  // API Key 設定在 index.html 的 GOOGLE_PLACES_API_KEY 常數
+  // API Key 由部署流程注入 window.GOOGLE_PLACES_API_KEY
 
   let _googleSessionToken = null;
 
@@ -135,11 +135,10 @@ function initAutocomplete(inputEl, options) {
     _googleSessionToken = null;
   }
 
-  // 取得 Google API Key（從全域常數）
+  // 取得 Google API Key（從部署設定）
   function getGoogleApiKey() {
-    return (typeof GOOGLE_PLACES_API_KEY !== 'undefined' && GOOGLE_PLACES_API_KEY)
-      ? GOOGLE_PLACES_API_KEY
-      : null;
+    const key = typeof window !== 'undefined' ? window.GOOGLE_PLACES_API_KEY : '';
+    return typeof key === 'string' && key.trim() ? key.trim() : null;
   }
 
   async function fetchGooglePlaces(query, signal) {

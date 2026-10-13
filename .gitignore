@@ -9,3 +9,11 @@ __pycache__/
 # Editor
 .vscode/
 .idea/
+
+# Local credentials and generated deployment assets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+_site/

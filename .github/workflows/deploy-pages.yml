@@ -29,9 +29,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: main
-      - name: Package public assets and inject CARTO key
+      - name: Verify data privacy and deployment boundaries
+        run: python3 -m unittest discover -s tests -v
+      - name: Package public assets and inject restricted browser keys
         env:
           CARTO_BASEMAP_API_KEY: ${{ secrets.CARTO_BASEMAP_API_KEY }}
+          GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
         run: python3 scripts/build_site.py "$RUNNER_TEMP/hydrant-site"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

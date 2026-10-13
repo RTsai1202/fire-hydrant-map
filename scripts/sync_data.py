@@ -19,6 +19,30 @@ KML_SOURCES = [
 
 OUTPUT_PATH = "data/hydrants.geojson"
 KML_NS = "http://www.opengis.net/kml/2.2"
+PRIVATE_METADATA_FIELDS = frozenset({"建檔帳號", "修改帳號"})
+PRIVATE_DESCRIPTION_LINE = re.compile(r"^\s*(?:建檔帳號|修改帳號)\s*[:：]")
+
+
+def sanitize_feature(feature):
+    """移除管理帳號及說明中的帳號行，保留其他設施資訊；不修改原物件。"""
+    properties = {
+        key: value for key, value in feature.get("properties", {}).items()
+        if key.strip() not in PRIVATE_METADATA_FIELDS
+    }
+    description = properties.get("說明")
+    if isinstance(description, str):
+        properties["說明"] = "".join(
+            line for line in description.splitlines(keepends=True)
+            if not PRIVATE_DESCRIPTION_LINE.match(line)
+        )
+    return {**feature, "properties": properties}
+
+
+def sanitize_collection(collection):
+    """清理整份 GeoJSON，保留 feature 順序、幾何與集合中繼資料。"""
+    return {**collection, "features": [
+        sanitize_feature(feature) for feature in collection["features"]
+    ]}
 
 
 def tag(name):
@@ -70,11 +94,11 @@ def parse_kml_features(kml_bytes, source_label):
                 if key and val_el is not None:
                     props[key] = (val_el.text or "").strip()
 
-        features.append({
+        features.append(sanitize_feature({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lng, lat]},
             "properties": props,
-        })
+        }))
 
     return features
 
