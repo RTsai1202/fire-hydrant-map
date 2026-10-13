@@ -843,10 +843,12 @@ const map = L.map('map', {
 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-  subdomains: 'abcd',
+// CARTO 未附 API key 時會回傳告示圖片，改用 OpenStreetMap 標準底圖。
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxNativeZoom: 19,
   maxZoom: 20,
+  updateWhenIdle: true,
 }).addTo(map);
 
 // ── 圖標 ────────────────────────────────────────
